@@ -1,0 +1,151 @@
+"""Behaviour map: render the call trees recorded by `rs3test map` as a
+Markdown section a plugin's README can include.
+
+One scenario (a test) is one feature: "right-click a goblin, Advanced
+Examine". Its tree lists the plugin's own functions that ran, nested under
+the function that called them, with the file and line each is defined at.
+Repeats are already merged (a loop is one line with "x600"); here the tree
+is kept short by:
+
+* writing a single-child chain on one line: `a` → `b` → `c`;
+* stopping at `depth` levels, with a count of what is below;
+* listing at most `width` children per function, with a count of the rest.
+
+`rs3test map` regenerates the section from real runs, so it cannot drift
+from the code.
+
+Tail calls: a function that ends with `return f(x)` hands its place on the
+stack to f (that is how Lua runs it), so f is listed beside it rather than
+under it.
+"""
+
+from __future__ import annotations
+
+import re
+
+START = "<!-- behaviour-map:start -->"
+END = "<!-- behaviour-map:end -->"
+LOAD = "Loading the plugin"
+
+
+class MapError(Exception):
+    """A scenario that cannot be mapped (it failed, or ran no plugin code)."""
+
+
+def _label(node: dict, root_plugin: str) -> str:
+    name = node["name"]
+    file = node["file"]
+    where = f"{file}:{node['line']}" if node["line"] else file
+    if node["plugin"] and node["plugin"] != root_plugin:
+        where = f"{node['plugin']} · {where}"
+    if name == "(top level)":
+        text = f"`{file}` (top level)"
+        if node["plugin"] and node["plugin"] != root_plugin:
+            text = f"`{file}` (top level, {node['plugin']})"
+    elif name:
+        text = f"`{name}` ({where})"
+    else:
+        text = f"anonymous function ({where})"
+    if node.get("role"):
+        text = f"**{node['role']}**: {text}"
+    if node["count"] > 1:
+        text += f" ×{node['count']}"
+    return text
+
+
+def _size(node: dict) -> int:
+    """Functions in a subtree, the node itself excluded."""
+    return sum(1 + _size(c) for c in node["children"])
+
+
+def _render(node: dict, root_plugin: str, depth: int, max_depth: int, width: int, out: list[str]):
+    # Fold a single-child chain into one line.
+    parts = [_label(node, root_plugin)]
+    while len(node["children"]) == 1 and len(parts) < 6:
+        node = node["children"][0]
+        parts.append(_label(node, root_plugin))
+    indent = "  " * depth
+    out.append(f"{indent}- " + " → ".join(parts))
+    kids = node["children"]
+    if not kids:
+        return
+    if depth + 1 >= max_depth:
+        out.append(f"{indent}  - … {_size(node)} more function(s) below")
+        return
+    for child in kids[:width]:
+        _render(child, root_plugin, depth + 1, max_depth, width, out)
+    if len(kids) > width:
+        rest = kids[width:]
+        out.append(f"{indent}  - … and {len(rest)} more ({sum(1 + _size(c) for c in rest)} functions)")
+
+
+def select(results: list[dict], trees: list[dict], only: list[str] | None,
+           include_load: bool) -> list[dict]:
+    """The scenarios to map from one spec file, failing loudly on a failed
+    test or a scenario that ran no plugin code."""
+    by_name = {t["name"]: t for t in trees}
+    marked = [r for r in results if r.get("scenario")]
+    if only:
+        chosen = [r for r in results if any(re.search(p, r["name"]) for p in only)]
+        if not chosen:
+            raise MapError(f"--only {only} matched no test in {results[0]['file'] if results else 'the spec'}")
+    elif marked:
+        chosen = marked
+    else:
+        chosen = results
+    failed = [r for r in chosen if not r["ok"]]
+    if failed:
+        raise MapError("a scenario failed, so its map would be wrong: " +
+                       "; ".join(f"{r['name']}: {(r['error'] or '').splitlines()[0]}" for r in failed))
+    picked = []
+    if include_load and LOAD in by_name:
+        picked.append(by_name[LOAD])
+    empty = []
+    for r in chosen:
+        tree = by_name.get(r["name"])
+        if not tree or not tree["root"]["children"]:
+            empty.append(r["name"])
+        else:
+            picked.append(tree)
+    if empty:
+        raise MapError("these scenarios ran no plugin code, so there is nothing to map: " + "; ".join(empty) +
+                       ". Mark the tests that are features with scenario(name, fn) in the spec, or pick "
+                       "them with --only.")
+    return picked
+
+
+def render(scenarios: list[dict], plugin_name: str, plugin_version: str, command: str,
+           max_depth: int = 4, width: int = 8) -> str:
+    lines = [
+        START,
+        "## Behaviour map",
+        "",
+        f"What runs in {plugin_name} {plugin_version} for each feature, recorded from real test runs.",
+        "Each line is one of the plugin's functions (file and line where it is defined), nested under",
+        "the function that called it; `a` → `b` means `a` calls only `b`, and ×N is how many times it",
+        "ran in that scenario. Game API calls and the test kit are left out.",
+        "",
+        f"_Generated by `{command}`. Do not edit by hand; run the command again after changing the code._",
+        "",
+    ]
+    for s in scenarios:
+        lines.append(f"### {s['name']}")
+        lines.append("")
+        for child in s["root"]["children"][:width]:
+            _render(child, plugin_name, 0, max_depth, width, lines)
+        rest = s["root"]["children"][width:]
+        if rest:
+            lines.append(f"- … and {len(rest)} more entry points")
+        lines.append("")
+    lines.append(END)
+    return "\n".join(lines) + "\n"
+
+
+def splice(readme: str, section: str, path: str) -> str:
+    """Replace the text between the behaviour-map markers in a README."""
+    if START not in readme or END not in readme:
+        raise MapError(f"{path} has no behaviour map markers; add these two lines where the map goes:\n"
+                       f"{START}\n{END}")
+    head, rest = readme.split(START, 1)
+    _, tail = rest.split(END, 1)
+    return head + section.rstrip("\n") + tail

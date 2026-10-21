@@ -196,6 +196,23 @@ class Session:
             return self.lua.table_from([self._json_to_lua(v) for v in value])
         return value
 
+    def start_map(self) -> None:
+        """Record a call tree per test for the behaviour map (rs3test map)."""
+        self.kit._mapStart()
+
+    def map_result(self) -> list[dict]:
+        """[{name, calls, root}] where root/children are {name, file, plugin,
+        line, count, children}, in the order scenarios first ran."""
+        def node(t):
+            kids = t.children
+            return {"name": t.name, "role": t.role, "file": t.file, "plugin": t.plugin,
+                    "line": int(t.line) if t.line is not None else None,
+                    "count": int(t.count or 0),
+                    "children": [node(kids[i]) for i in range(1, len(kids) + 1)]}
+        res = self.kit._mapResult()
+        return [{"name": res[i].name, "calls": int(res[i].calls), "root": node(res[i].root)}
+                for i in range(1, len(res) + 1)]
+
     def start_activation(self) -> None:
         """Record which plugin lines/functions run (kit.activation)."""
         self.kit.activation.start()
@@ -214,7 +231,7 @@ class Session:
             r = results[i]
             warnings = [r.warnings[j] for j in range(1, len(r.warnings) + 1)] if r.warnings else []
             out.append({"file": r.file, "name": r.name, "ok": bool(r.ok), "error": r.error,
-                        "ms": float(r.ms), "warnings": warnings})
+                        "ms": float(r.ms), "warnings": warnings, "scenario": bool(r.scenario)})
         return out
 
     def summary(self) -> dict:

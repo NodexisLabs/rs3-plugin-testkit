@@ -154,7 +154,7 @@ sandbox.
 
 ## Spec API
 
-Globals in a spec: `kit`, `test(name, fn)`, `expect(value)`, the game API
+Globals in a spec: `kit`, `test(name, fn)`, `scenario(name, fn)` (a test that is a feature, for the behaviour map), `expect(value)`, the game API
 exactly as the plugin sees it (`Player`, `ui`, `SkillType`, ...), and the full
 host Lua library.
 
@@ -267,6 +267,53 @@ a function as they happen, which is the hook point for a live code view.
 events per file and says so in a lint; raise the cap with
 `kit.activation.setLimit(n)`. It runs on Lua's `debug.sethook`, so it works
 only offline: the client sandbox is not known to provide `debug` (unverified).
+
+## Behaviour map (`rs3test map`)
+
+A Markdown section for a plugin's README, saying which of the plugin's
+functions run for each feature. It's for readers who don't want to read the
+whole codebase: players, other developers, and Jagex reviewers ("clicking a
+drop runs `open` → `Views.item` → `Lookup.dropsOfItem` ..."). It is
+regenerated from real test runs, so it can't drift from the code.
+
+Mark the tests that are features with `scenario` instead of `test`:
+
+```lua
+scenario("Right-click a goblin and choose Advanced Examine", function()
+    kit.menu.open({ kit.menu.entry{ npc = goblin, verb = "Examine" } }):select("Advanced Examine")
+end)
+```
+
+Then put two marker lines in the README where the map goes:
+
+```
+<!-- behaviour-map:start -->
+<!-- behaviour-map:end -->
+```
+
+```bash
+rs3test map plugin spec --readme README.md
+```
+
+- Each line is one of the plugin's own functions, with the file and line it is
+  defined at, nested under the function that called it. The game API, the
+  kit and the spec are left out.
+- Entry points say what triggered them: `Event.SkillTransmit handler
+  "tracker"`, `ONBUTTONPRESSED on the Back button`, `menu entry "Advanced
+  Examine" chosen`, `HTTP GET ... reply`.
+- Repeats are merged, so a loop is one line with `×600`. A function that
+  calls only one other is written `a` → `b`. `--depth` (default 4) and
+  `--width` (default 8) keep it short and say how much they left out.
+- If a file has no `scenario`, every test is mapped, or pick tests with
+  `--only REGEX`.
+- It fails rather than writing a map when a scenario fails, when one runs
+  none of the plugin's code (an assertion-only test marked as a feature), or
+  when the README has no markers.
+- Tail calls: a function that ends with `return f(x)` hands its place to `f`,
+  so `f` appears beside it rather than under it. That's how Lua runs it.
+
+[`examples/behaviour-map-advanced-examine.md`](examples/behaviour-map-advanced-examine.md)
+is the map for Advanced Examine's window tests.
 
 ## Manifest rules (`rs3test check`)
 

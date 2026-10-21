@@ -19,6 +19,7 @@
 
 local Core = require("core")
 local Docs = require("docs")
+local Behaviour = require("behaviour")
 
 local M = {}
 
@@ -114,6 +115,7 @@ local function eventTableFor(pluginName)
         local ns = Core.namespace("Event." .. name, {
             members = {
                 Subscribe = Core.static({ "string", "function" }, function(ref, fn)
+                    Behaviour.label(fn, function() return "Event." .. name .. " handler \"" .. ref .. "\"" end)
                     local list = subscribers[name] or {}
                     subscribers[name] = list
                     for _, s in ipairs(list) do

@@ -218,7 +218,18 @@ local function pluginDirs()
     return dirs
 end
 
+-- Behaviour map (rs3test map): call trees per scenario, see behaviour.lua.
+local Behaviour = require("behaviour")
+local mapping = false
+function kit._mapStart()
+    if activation.on then error("rs3testkit: the behaviour map and kit.activation cannot run together", 2) end
+    mapping = true
+    Behaviour.start(pluginDirs(), "Loading the plugin")
+end
+function kit._mapResult() return Behaviour.result() end
+
 function kit.activation.start(sink, opts)
+    if mapping then error("rs3testkit: kit.activation cannot run while the behaviour map is recording", 2) end
     opts = opts or {}
     if sink then activation.sinks[#activation.sinks + 1] = sink end
     if activation.on then return end
@@ -278,7 +289,7 @@ kit._write = function(line) print(line) end
 function kit._setWriter(fn) kit._write = fn; Sandbox.write = fn end
 
 local function specEnv()
-    local env = { kit = kit, test = Spec.test, expect = Spec.expect }
+    local env = { kit = kit, test = Spec.test, scenario = Spec.scenario, expect = Spec.expect }
     env.print = function(...)
         local parts = {}
         for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
@@ -303,6 +314,7 @@ function kit._runSpec(path, displayName)
     local seen = 0
     return Spec.run(function(result)
         activation.test = nil
+        Behaviour.setScenario(nil)
         -- Lints that only make sense once a test has finished (UI state).
         if kit.ui and kit.ui._lintAfterTest then kit.ui._lintAfterTest() end
         -- Lint warnings raised while this test ran belong to it.
@@ -313,7 +325,10 @@ function kit._runSpec(path, displayName)
         end
         seen = #Core.warnings
         result.warnings = mine
-    end, function(t) activation.test = t.name end)
+    end, function(t)
+        activation.test = t.name
+        Behaviour.setScenario(t.name)
+    end)
 end
 
 function kit._summary()

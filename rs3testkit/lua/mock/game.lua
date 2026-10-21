@@ -17,6 +17,7 @@
 
 local Core = require("core")
 local Docs = require("docs")
+local Behaviour = require("behaviour")
 local Events = require("events")
 local Ids = require("ids")
 local Perms = require("perms")
@@ -587,6 +588,7 @@ local function menuClasses()
         strict = true,
         impls = {
             Add = function(self, label, fn, ...)
+                Behaviour.label(fn, function() return "menu entry \"" .. label .. "\" chosen" end)
                 if menuState.phase ~= "MiniMenuEntryAdded" and menuState.phase ~= "MiniMenuReady" then
                     error("rs3testkit: MiniMenu:Add is only available during Event.MiniMenuEntryAdded and " ..
                         "Event.MiniMenuReady (called " .. (menuState.phase and ("during " .. menuState.phase) or "outside any menu event") .. ")", 2)

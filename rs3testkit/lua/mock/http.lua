@@ -19,6 +19,7 @@
 
 local Core = require("core")
 local Docs = require("docs")
+local Behaviour = require("behaviour")
 local Perms = require("perms")
 
 local M = {}
@@ -103,6 +104,7 @@ local function send(self, method, body, onDone, onProgress)
     log[#log + 1] = { method = method, url = url, body = body, headers = headers, plugin = Core.getRaw(self, "_plugin") }
     local key = method .. " " .. url
     byEndpoint[key] = (byEndpoint[key] or 0) + 1
+    if onDone then Behaviour.label(onDone, function() return "HTTP " .. method .. " " .. url .. " reply" end) end
     pending[#pending + 1] = { req = self, method = method, url = url, body = body, headers = headers, onDone = onDone }
 end
 

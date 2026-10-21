@@ -27,6 +27,15 @@ function Spec.test(name, fn)
     tests[#tests + 1] = { name = name, fn = fn, file = currentFile }
 end
 
+-- A test that is also a feature for the behaviour map (`rs3test map`):
+-- what a player does, e.g. scenario("Right-click a goblin, Advanced Examine", fn).
+-- In a file that has any scenario(), only those are mapped.
+function Spec.scenario(name, fn)
+    if type(name) ~= "string" then error("scenario(name, fn): name must be a string", 2) end
+    if type(fn) ~= "function" then error("scenario(" .. name .. "): fn must be a function", 2) end
+    tests[#tests + 1] = { name = name, fn = fn, file = currentFile, scenario = true }
+end
+
 ---------------------------------------------------------------------------
 -- Readable values for failure messages
 ---------------------------------------------------------------------------
@@ -154,7 +163,7 @@ function Spec.run(after, before)
         local ok, err = xpcall(t.fn, function(message)
             return debug.traceback(tostring(message), 2)
         end)
-        local result = { file = t.file, name = t.name, ok = ok, error = (not ok) and err or nil,
+        local result = { file = t.file, name = t.name, scenario = t.scenario, ok = ok, error = (not ok) and err or nil,
                          ms = (os.clock() - start) * 1000 }
         if after then after(result) end
         results[#results + 1] = result

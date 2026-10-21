@@ -32,6 +32,7 @@
 
 local Core = require("core")
 local Docs = require("docs")
+local Behaviour = require("behaviour")
 local Ids = require("ids")
 local Vector = require("vector")
 
@@ -42,6 +43,7 @@ local info = setmetatable({}, { __mode = "k" })   -- component -> { kind, parent
 local root                           -- the plugin layer
 local statics = {}                   -- combined id -> component (kit.ui.addStatic)
 local HookName = Ids.hookNames
+local describe                       -- defined with the classes below
 
 local COMPONENT_TYPES = {
     ["ui.Line"] = "LINE", ["ui.Rectangle"] = "RECTANGLE", ["ui.Text"] = "LABEL", ["ui.Sprite"] = "SPRITE",
@@ -92,7 +94,9 @@ local function fireHook(c, hook, ...)
     local list = {}
     for i, e in ipairs(entries) do list[i] = e end
     for _, e in ipairs(list) do
+        Behaviour.enter(e.fn, function() return (HookName[hook] or tostring(hook)) .. " on " .. describe(c) end)
         local ok, result = xpcall(e.fn, debug.traceback, c, ...)
+        Behaviour.leave()
         if not ok then
             error(string.format("ui hook %s on %s raised:\n%s", HookName[hook] or tostring(hook),
                 Core.classOf(c), tostring(result)), 0)
@@ -105,9 +109,21 @@ end
 ---------------------------------------------------------------------------
 -- Classes
 ---------------------------------------------------------------------------
+-- "the Next button", "the text "Bones"", "a ui.GroupBox": read when the
+-- behaviour map first meets the handler, after the plugin has set it up.
+describe = function(c)
+    local cls = Core.classOf(c)
+    local label = Core.getRaw(c, "label")
+    if cls == "ui.Button" and label and label ~= "" then return "the " .. label .. " button" end
+    local content = Core.getRaw(c, "content")
+    if cls == "ui.Text" and content and content ~= "" then return "the text \"" .. content .. "\"" end
+    return "a " .. cls
+end
+
 local function subscribe(self, hook, a, b)
     local id, fn = "", a
     if b ~= nil then id, fn = a, b end
+    Behaviour.label(fn, function() return (HookName[hook] or tostring(hook)) .. " on " .. describe(self) end)
     local hooks = info[self].hooks
     hooks[hook] = hooks[hook] or {}
     for _, e in ipairs(hooks[hook]) do

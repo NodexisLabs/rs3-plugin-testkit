@@ -155,6 +155,64 @@ def cmd_run(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_map(args) -> int:
+    """Run the specs with the behaviour recorder and write the Markdown map."""
+    from .behaviour import MapError, render, select, splice
+    from .host import KitError, Session
+
+    plugin_dir = Path(args.plugin)
+    specs = _spec_files(args.specs)
+    deps = _parse_deps(args.dep)
+    scenarios = []
+    plugin_name, plugin_version = plugin_dir.name, "?"
+    for i, spec in enumerate(specs):
+        try:
+            session = Session(plugin_dir, deps, args.search, ids=args.ids)
+            plugin_name = session.plugin.name
+            plugin_version = str(session.plugin.manifest.get("version", "?"))
+            session.start_map()
+            results = session.run_spec(spec)
+            trees = session.map_result()
+            picked = select(results, trees, args.only, include_load=(i == 0))
+        except (KitError, MapError) as e:
+            print(f"rs3test map: {spec.name}: {e}", file=sys.stderr)
+            return 1
+        for t in picked:
+            print(f"  mapped {t['name']} ({t['calls']} plugin calls)", file=sys.stderr)
+        scenarios.extend(picked)
+    # The command to regenerate the map, minus where this run wrote it.
+    shown, skip = [], False
+    for a in args.argv:
+        if skip:
+            skip = False
+            continue
+        if a in ("--out", "--readme"):
+            skip = True
+            continue
+        if a.startswith(("--out=", "--readme=")):
+            continue
+        shown.append(f'"{a}"' if " " in a else a)
+    command = "rs3test map " + " ".join(shown)
+    section = render(scenarios, plugin_name, plugin_version, command, args.depth, args.width)
+    if args.readme:
+        path = Path(args.readme)
+        try:
+            text = splice(path.read_text(encoding="utf-8"), section, args.readme)
+        except MapError as e:
+            print(f"rs3test map: {e}", file=sys.stderr)
+            return 1
+        path.write_text(text, encoding="utf-8", newline="\n")
+        print(f"rs3test map: updated the behaviour map in {path}", file=sys.stderr)
+    elif args.out:
+        Path(args.out).write_text(section, encoding="utf-8", newline="\n")
+        print(f"rs3test map: wrote {args.out}", file=sys.stderr)
+    else:
+        # UTF-8 regardless of the console code page (the map uses → and ×).
+        sys.stdout.buffer.write(section.encode("utf-8"))
+        sys.stdout.flush()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="rs3test", description="Offline test kit for RuneScape 3 Lua plugins")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -181,7 +239,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_run)
 
-    args = parser.parse_args(argv)
+    p = sub.add_parser("map", help="write a Markdown behaviour map: which plugin functions each scenario runs")
+    p.add_argument("plugin")
+    p.add_argument("specs", nargs="*", default=["spec"], help="spec files or folders (default: spec/)")
+    p.add_argument("--only", action="append", metavar="REGEX",
+                   help="map only tests whose name matches (default: scenario() tests, else every test)")
+    p.add_argument("--readme", metavar="FILE", help="replace the section between the behaviour-map markers in FILE")
+    p.add_argument("--out", metavar="FILE", help="write the section to FILE (default: print it)")
+    p.add_argument("--depth", type=int, default=4, help="levels to show (default 4)")
+    p.add_argument("--width", type=int, default=8, help="calls to list per function (default 8)")
+    p.add_argument("--dep", action="append", metavar="KEY=FOLDER")
+    p.add_argument("--search", action="append", default=[], metavar="FOLDER")
+    p.add_argument("--ids", metavar="FOLDER")
+    p.set_defaults(func=cmd_map)
+
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(raw)
+    args.argv = raw[1:]
     return args.func(args)
 
 
