@@ -430,6 +430,52 @@ class FixturesWork(KitCase):
         self.assertPasses(r)
 
 
+class StubIds(KitCase):
+    """--ids reads id tables from a local clone of runescape-api-stubs."""
+
+    def make_stubs(self) -> Path:
+        csvs = self.root / "stubs" / "csvs"
+        csvs.mkdir(parents=True)
+        (csvs / "Font.csv").write_text("494,MUSEO_SANS_13PT_REGULAR,\n495,MUSEO_SANS_13PT_BOLD,\n", encoding="utf-8")
+        (csvs / "NPC.csv").write_text("81,COW,\n11240,GOBLIN_LUMBRIDGE,\n", encoding="utf-8")
+        (csvs / "VarPlayer.csv").write_text("-60917,SAFES_REWARD,INTEGER,7894,0x2000000,\n", encoding="utf-8")
+        return self.root / "stubs"
+
+    def test_lookups_come_from_the_clone(self):
+        d = make_plugin(self.root, """
+            font = id.Font.MUSEO_SANS_13PT_BOLD
+            cow = id.NPC.COW
+            name = id.NPC.FromID(11240)
+            varp = id.VarPlayer.SAFES_REWARD
+        """)
+        spec = self.root / "ids_spec.lua"
+        spec.write_text(textwrap.dedent("""
+            kit.start()
+            test("real numbers", function()
+                local env = kit.env()
+                expect(env.font).toBe(495)
+                expect(env.cow).toBe(81)
+                expect(env.name).toBe("GOBLIN_LUMBRIDGE")
+                expect(env.varp).toBe(-60917)
+                expect(kit.ids.source()).toContain("runescape-api-stubs")
+            end)
+            test("unknown names still fail loudly", function()
+                expect(function() return id.NPC.NOT_A_REAL_NPC end).toError("not in the stub id tables either")
+            end)
+        """), encoding="utf-8")
+        r = Session(d, ids=self.make_stubs()).run_spec(spec)
+        self.assertPasses(r)
+
+    def test_without_the_clone_the_error_points_at_it(self):
+        r = self.run_spec("local cow = id.NPC.COW", 'test("x", function() kit.start() end)')
+        self.assertFailsWith(r, "run with --ids <clone of runescape-api-stubs>")
+
+    def test_bad_path_is_a_setup_error(self):
+        d = make_plugin(self.root, "")
+        with self.assertRaises(KitError):
+            Session(d, ids=self.root / "nowhere")
+
+
 class Activation(KitCase):
     def test_records_plugin_lines_and_calls_per_test(self):
         d = make_plugin(self.root, """

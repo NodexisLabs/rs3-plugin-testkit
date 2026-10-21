@@ -194,7 +194,7 @@ host Lua library.
 | `kit.inventory.set(93, { {995, 1000}, false, {1511, 1} })` | an `Inv` (93 = backpack, 95 = bank) |
 | `kit.inventory.setSlot(id, slot, obj, n)` / `remove(id)` | `InventoryUpdated` / `InventoryRemoved` |
 | `kit.ge.setOffer(slot, { type =, item =, price =, itemCount = })` | fires `GrandExchangeOfferUpdated` |
-| `kit.ids.add("NPC", "GOBLIN", 11240)` | a name for an `id.*` table |
+| `kit.ids.add("NPC", "GOBLIN", 11240)` | a name for an `id.*` table (or use `--ids`, below) |
 
 **Menus and UI**
 
@@ -220,6 +220,33 @@ host Lua library.
 | `kit.chat.receive{ text =, type =, sender = }`, `kit.chat.messages()` | chat in and out (needs `chatAccess`) |
 | `kit.console.lines()`, `kit.console.expectNo("ERROR")` | the plugin's `print` output |
 | `kit.warnings()`, `kit.trace(n)`, `kit.calls("Player.GetEntity")` | lint findings and every API call the plugin made |
+
+## Full id tables (`--ids`)
+
+On its own, the kit knows only the id names seen in a live client: all
+stylesheets, the font names and the plugin layer. For everything else
+(`id.NPC`, `id.Obj`, `id.Component`, `id.VarPlayer`, `id.Sprite`, real font
+numbers, ...), point it at a local clone of the community
+[LuaLS stubs](https://github.com/FriendlyDevelopment/runescape-api-stubs):
+
+```bash
+git clone --depth 1 https://github.com/FriendlyDevelopment/runescape-api-stubs
+```
+
+```bash
+rs3test run plugin spec --ids ../runescape-api-stubs
+```
+
+Setting `RS3_API_STUBS` to the clone's path does the same. The kit reads the
+clone's `csvs/` folder: each table is parsed the first time a spec looks a
+name up in it, and stays loaded for the rest of the run. The run summary
+says which commit the ids came from (`id tables: runescape-api-stubs @
+39f563a`). A name in neither the kit nor the stubs still fails loudly.
+
+The stubs repo has no licence, so the kit doesn't copy its files and you
+need your own clone. In a plugin's CI, clone it in a step before
+`rs3test run`. The same clone gives your editor autocomplete; its README
+explains how.
 
 ## Code activation
 
@@ -282,8 +309,13 @@ client draws things: fonts, real sizes, styles, models and sprites. It can't
 show timing in the client or how the plugin interacts with other plugins.
 Check those in the beta client before you submit. Behaviour that is neither
 documented nor seen live is marked in the code and in error messages. For
-example, the `id.Font` numbers are assigned by the kit, so never hard-code
-them.
+example, without `--ids` the `id.Font` numbers are assigned by the kit, so
+never hard-code them.
+
+For checking in the beta client, [`devlink/`](devlink/README.md) is a dev-only
+plugin plus a local server that lets a session on your PC read game state, run
+read-only commands and watch events in the live client. It is kept apart from
+the kit: the kit itself still has no network code.
 
 ## Updating from the docs
 

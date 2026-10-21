@@ -1,10 +1,11 @@
 -- id.* tables and the API's enums.
 --
 -- id tables map game config names to numbers (id.StyleSheet.BUTTON_DEFAULT
--- is 96). The real tables are large game data; the kit carries the
--- stylesheets and font names seen in a live client (ids_observed.lua) and a
--- few named ids the docs and plugins use. Anything else raises an error that
--- tells the spec how to add it:
+-- is 96). The real tables are large game data. The kit carries the
+-- stylesheets and font names seen in a live client (ids_observed.lua), and
+-- with `--ids <clone of runescape-api-stubs>` it reads every table from that
+-- clone (stubs.py). Anything still unknown raises an error that tells the
+-- spec how to add it:
 --
 --   kit.ids.add("NPC", "GOBLIN", 11240)
 --
@@ -19,10 +20,17 @@ local Observed = require("ids_observed")
 local M = {}
 
 -- id.Component entries are interface__component names. The plugin layer's
--- real number is not known; the kit assigns one.
+-- number is the one in the community stub tables (csvs/Component.csv).
 local COMPONENTS = {
-    TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP = 900001,
+    TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP = 96797554,
 }
+
+-- The full id tables, when the host found a local clone of the LuaLS stubs
+-- (--ids or RS3_API_STUBS). The host puts the bridge in package.loaded
+-- before loading the kit: { active = true, number = fn, name = fn, kinds = {...} }.
+local okBridge, Stubs = pcall(require, "stubsbridge")
+if not okBridge then Stubs = { active = false } end
+M.stubs = Stubs
 
 local function fontTable()
     local entries = {}
@@ -72,15 +80,21 @@ end
 
 function M.install(api, kit)
     local tables = {
-        Component = Core.idTable("id.Component", COMPONENTS),
-        StyleSheet = Core.idTable("id.StyleSheet", Observed.StyleSheet),
-        Font = Core.idTable("id.Font", fontTable()),
+        Component = Core.idTable("id.Component", COMPONENTS, Stubs),
+        StyleSheet = Core.idTable("id.StyleSheet", Observed.StyleSheet, Stubs),
+        -- Real font numbers come only from the stubs; without them the kit
+        -- numbers the live font names itself.
+        Font = Core.idTable("id.Font", Stubs.active and {} or fontTable(), Stubs),
     }
-    -- Game config id tables: empty until a spec adds names.
-    for _, kind in ipairs({ "NPC", "Obj", "Loc", "Seq", "Model", "Material", "Category", "Inv", "Var",
-                            "DBTable", "DBRow", "Enum", "Struct", "Param", "Quest", "SpotAnim",
-                            "Cursor", "MapElement", "Achievement", "BaseAnimSet", "Headbar", "Hitmark" }) do
-        tables[kind] = Core.idTable("id." .. kind, {})
+    -- Game config id tables: empty until a spec adds names or the stubs
+    -- supply them.
+    local kinds = { "NPC", "Obj", "Loc", "Seq", "Model", "Material", "Category", "Inv", "Var",
+                    "DBTable", "DBRow", "Enum", "Struct", "Param", "Quest", "SpotAnim",
+                    "Cursor", "MapElement", "Achievement", "BaseAnimSet", "Headbar", "Hitmark",
+                    "Interface", "Music", "Sound", "Sprite", "VarClient", "VarPlayer", "VarPlayerGroup" }
+    for _, k in ipairs(Stubs.kinds or {}) do kinds[#kinds + 1] = k end
+    for _, kind in ipairs(kinds) do
+        tables[kind] = tables[kind] or Core.idTable("id." .. kind, {}, Stubs)
     end
     api.id = Core.namespace("id", { members = tables })
 
@@ -94,8 +108,12 @@ function M.install(api, kit)
         end
         Core.idAdd(t, name, number)
     end
-    -- The number the kit uses for the plugin layer component.
+    -- The number of the plugin layer component.
     kit.ids.PLUGIN_LAYER = COMPONENTS.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP
+    -- Whether the full stub id tables are loaded, and from which commit.
+    function kit.ids.source()
+        return Stubs.active and ("runescape-api-stubs @ " .. tostring(Stubs.revision)) or "kit seed tables only"
+    end
 end
 
 return M

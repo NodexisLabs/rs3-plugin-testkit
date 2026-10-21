@@ -26,6 +26,8 @@ except ImportError as e:  # fail loudly with the fix, not a bare ImportError
         "install to a short path (pip install --target C:\\lp lupa) and add it to PYTHONPATH."
     ) from e
 
+from .stubs import open_stubs
+
 LUA_DIR = Path(__file__).resolve().parent / "lua"
 
 
@@ -147,11 +149,26 @@ class Session:
     """One Lua runtime with the mock API and one plugin (plus dependencies)."""
 
     def __init__(self, plugin_dir: str | Path, dep_paths: dict | None = None,
-                 search: list | None = None, echo: bool = False):
+                 search: list | None = None, echo: bool = False, ids: str | Path | None = None):
+        """`ids`: a local clone of runescape-api-stubs for the full id.*
+        tables (default: $RS3_API_STUBS; none means the kit's seed tables)."""
         self.plugin = resolve(plugin_dir, dep_paths, search)
         self.lua = lupa.LuaRuntime(unpack_returned_tuples=True)
         g = self.lua.globals()
         g.package.path = f"{LUA_DIR.as_posix()}/?.lua;{LUA_DIR.as_posix()}/mock/?.lua"
+        try:
+            self.stubs = open_stubs(ids)
+        except FileNotFoundError as e:
+            raise KitError(str(e)) from e
+        if self.stubs:
+            bridge = self.lua.table_from({
+                "active": True,
+                "revision": self.stubs.revision,
+                "number": self.stubs.number,
+                "name": self.stubs.name,
+            })
+            bridge.kinds = self.lua.table_from(self.stubs.kinds)
+            g.package.loaded["stubsbridge"] = bridge
         self.kit = self.lua.eval('(require("kit"))')
         self.kit._setWriter(lambda line: print(line, flush=True))
         self.kit._setup(self._to_lua(self.plugin), echo)

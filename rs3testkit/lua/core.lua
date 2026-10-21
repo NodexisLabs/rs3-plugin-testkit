@@ -411,24 +411,48 @@ end
 ---------------------------------------------------------------------------
 -- In the client, id.Font, id.StyleSheet, id.Component, ... map numbers to
 -- names when iterated (pairs gives 10 = "BUTTON_ACCORDION_24PX_MOBILE"), and
--- a name gives its number. The real tables are large game data; the kit
--- ships the entries seen in a live client and lets specs add more with
--- kit.ids.add. An unknown name raises an error instead of returning nil.
-function Core.idTable(path, entries)
+-- a name gives its number. The real tables are large game data. The kit
+-- seeds them with entries seen in a live client, and `resolver` (when the
+-- run has a local clone of the LuaLS stubs, see stubs.py) looks up the rest:
+--   resolver.number(kind, name) -> number | nil
+--   resolver.name(kind, number) -> name | nil
+-- A name found nowhere raises an error instead of returning nil.
+-- pairs() lists only the entries looked up or seeded so far.
+function Core.idTable(path, entries, resolver)
+    local kind = string.gsub(path, "^id%.", "")
     local byName = {}
     local t = {}
     for name, number in pairs(entries) do
         byName[name] = number
         rawset(t, number, name)
     end
+    local function fromID(n)
+        local name = rawget(t, n)
+        if name == nil and resolver and resolver.active then
+            name = resolver.name(kind, n)
+            if name ~= nil then byName[name] = n; rawset(t, n, name) end
+        end
+        return name
+    end
     return setmetatable(t, {
         __index = function(_, key)
             local v = byName[key]
             if v ~= nil then return v end
-            if type(key) == "number" then return nil end   -- number -> name lookup misses are nil
+            if key == "FromID" then return fromID end
+            if type(key) == "number" then return fromID(key) end
+            if resolver and resolver.active then
+                v = resolver.number(kind, key)
+                if v ~= nil then
+                    byName[key] = v
+                    rawset(t, v, key)
+                    return v
+                end
+            end
             Core.missing(path .. "." .. tostring(key), false,
-                "The kit ships only part of this game table; if the name is real, add it in your spec: " ..
-                "kit.ids.add(\"" .. string.gsub(path, "^id%.", "") .. "\", \"" .. tostring(key) .. "\", <number>).")
+                ((resolver and resolver.active) and "It is not in the stub id tables either. " or
+                    "The kit ships only part of this game table; run with --ids <clone of runescape-api-stubs> " ..
+                    "for the full tables, or ") ..
+                "add it in your spec: kit.ids.add(\"" .. kind .. "\", \"" .. tostring(key) .. "\", <number>).")
         end,
         __kit = { path = path, byName = byName },
     })

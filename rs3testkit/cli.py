@@ -105,10 +105,12 @@ def cmd_run(args) -> int:
     http_endpoints: dict[str, int] = {}
     started = time.perf_counter()
     activation_out = open(args.activation, "w", encoding="utf-8") if args.activation else None
+    id_source = "kit seed tables only"
     for spec in specs:
         print(f"\n{spec}")
         try:
-            session = Session(plugin_dir, deps, args.search, echo=args.echo)
+            session = Session(plugin_dir, deps, args.search, echo=args.echo, ids=args.ids)
+            id_source = session.kit.ids.source()
             if activation_out:
                 session.start_activation()
             results = session.run_spec(spec)
@@ -146,6 +148,7 @@ def cmd_run(args) -> int:
     top = ", ".join(f"{k} {v}" for k, v in sorted(http_endpoints.items(), key=lambda kv: -kv[1])[:3])
     print(f"HTTP: {http_total} simulated request(s) by the plugin" + (f"; top: {top}" if top else "") +
           "; 0 real network requests (the kit has no network code)")
+    print(f"id tables: {id_source}")
     if args.junit:
         _write_junit(Path(args.junit), all_results, seconds)
         print(f"JUnit report: {args.junit}")
@@ -171,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--echo", action="store_true", help="show the plugin's print() output")
     p.add_argument("--junit", metavar="FILE", help="write a JUnit XML report (for CI)")
     p.add_argument("--no-check", action="store_true", help="skip the manifest check")
+    p.add_argument("--ids", metavar="FOLDER",
+                   help="local clone of runescape-api-stubs for the full id.* tables (default: $RS3_API_STUBS)")
     p.add_argument("--activation", metavar="FILE",
                    help="write every plugin line/call/return that ran, per test, as JSON lines")
     p.add_argument("-v", "--verbose", action="store_true")
