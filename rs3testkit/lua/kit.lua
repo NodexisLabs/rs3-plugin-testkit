@@ -127,10 +127,19 @@ function kit.loadOrder() return loadOrder end
 function kit.mock(path, value)
     local ns, name = string.match(path, "^(.*)%.([^%.]+)$")
     if not ns then error("kit.mock: path must look like Namespace.member", 2) end
-    local target = Sandbox.api
+    local target = nil
     for part in string.gmatch(ns, "[^%.]+") do
-        target = target[part]
+        if target == nil then
+            target = root and root.ownApi[part] or nil
+            if target == nil then target = Sandbox.api[part] end
+        else
+            target = target[part]
+        end
         if target == nil then error("kit.mock: no API namespace " .. ns, 2) end
+    end
+    if Core.classOf(target) then
+        error("kit.mock: " .. ns .. " is an object, not a namespace of functions; " ..
+            "replace its methods with kit.mockMethod(\"" .. (Core.classOf(target) or ns) .. "\", \"" .. name .. "\", fn)", 2)
     end
     if not Core.namespaceStore(target) then
         error("kit.mock: " .. ns .. " is not a mock namespace (use kit.mockMethod for classes)", 2)
@@ -172,7 +181,7 @@ function kit.warnings() return Core.warnings end
 
 -- The last `n` API calls the plugin made (all if n is nil).
 function kit.trace(n)
-    local t = Core.trace
+    local t = Core.traceList()
     if n == nil or n >= #t then return t end
     local out = {}
     for i = #t - n + 1, #t do out[#out + 1] = t[i] end
@@ -181,7 +190,7 @@ end
 
 function kit.calls(api)
     local n = 0
-    for _, c in ipairs(Core.trace) do if c.api == api then n = n + 1 end end
+    for _, c in ipairs(Core.traceList()) do if c.api == api then n = n + 1 end end
     return n
 end
 

@@ -40,6 +40,9 @@ PROPERTY_GROUPS = {"Visual", "State", "Interface"}
 OWNER_ALIASES = {
     "Component": "ui.Component", "ComponentCollection": "ui.ComponentCollection",
     "NPC": "NPCType", "Loc": "LocType", "Obj": "ObjType", "Cursor": "CursorType",
+    "Font": "FontType", "Seq": "SeqType", "Struct": "StructType", "Enum": "EnumType",
+    "DBRow": "DBRowType", "DBTable": "DBTableType", "Quest": "QuestType",
+    "MapElement": "MapElementType", "Achievement": "AchievementType",
     "PluginResource<T>": "PluginResource", "ui.function StyleSheets": "ui.StyleSheets",
 }
 HEADING = re.compile(r"^(#{2,6}) (.+?)\s*$")

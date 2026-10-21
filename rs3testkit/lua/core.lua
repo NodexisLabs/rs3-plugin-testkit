@@ -37,9 +37,22 @@ function Core.resetWarnings()
     warned = {}
 end
 
+-- The trace keeps the last TRACE_LIMIT calls in a ring buffer (removing
+-- the oldest from the front of a list was quadratic in frame-heavy UI).
+local traceNext, traceFull = 1, false
 local function record(api, args)
-    if #Core.trace >= Core.TRACE_LIMIT then table.remove(Core.trace, 1) end
-    Core.trace[#Core.trace + 1] = { api = api, args = args }
+    Core.trace[traceNext] = { api = api, args = args }
+    traceNext = traceNext + 1
+    if traceNext > Core.TRACE_LIMIT then traceNext, traceFull = 1, true end
+end
+
+-- The trace in call order, oldest first.
+function Core.traceList()
+    if not traceFull then return Core.trace end
+    local out = {}
+    for i = traceNext, Core.TRACE_LIMIT do out[#out + 1] = Core.trace[i] end
+    for i = 1, traceNext - 1 do out[#out + 1] = Core.trace[i] end
+    return out
 end
 
 -- Error raised when a plugin touches something the kit does not provide.

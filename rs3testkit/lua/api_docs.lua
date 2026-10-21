@@ -39,19 +39,12 @@ return {
                 width = { type = "Float", ro = true },
             },
         },
-        ["Achievement"] = {
+        ["AchievementType"] = {
             page = "https://developer.runescape.com/rs/game/config/achievementtype.html",
             methods = {
                 GetPrereqGroupComplete = { sep = ":", sigs = { { params = { "Integer" }, returns = "Boolean" } } },
                 GetSubItemCompletionCountForPrereqGroup = { sep = ":", sigs = { { params = { "Integer" }, returns = "Boolean" } } },
                 GetSubItemCompletionCountForRequirementGroup = { sep = ":", sigs = { { params = { "Integer" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
-        ["AchievementType"] = {
-            page = "https://developer.runescape.com/rs/game/config/achievementtype.html",
-            methods = {
             },
             props = {
                 achievements = { type = "Table", ro = true },
@@ -172,19 +165,12 @@ return {
                 typeName = { type = "String", ro = true },
             },
         },
-        ["DBRow"] = {
+        ["DBRowType"] = {
             page = "https://developer.runescape.com/rs/game/config/dbrowtype.html",
             methods = {
                 GetColumnValueCount = { sep = ":", sigs = { { params = { "Integer" }, returns = "Integer" } } },
                 GetColumnValueTypes = { sep = ":", sigs = { { params = { "Integer" }, returns = "[ ValueType ]" } } },
                 GetColumnValues = { sep = ":", sigs = { { params = { "Integer" }, returns = "[ ? ]" } } },
-            },
-            props = {
-            },
-        },
-        ["DBRowType"] = {
-            page = "https://developer.runescape.com/rs/game/config/dbrowtype.html",
-            methods = {
             },
             props = {
                 columnCount = { type = "Integer", ro = true },
@@ -194,7 +180,7 @@ return {
                 typeName = { type = "String", ro = true },
             },
         },
-        ["DBTable"] = {
+        ["DBTableType"] = {
             page = "https://developer.runescape.com/rs/game/config/dbtabletype.html",
             methods = {
                 GetColumnDefaultValues = { sep = ":", sigs = { { params = { "Integer" }, returns = "[ ? ]" } } },
@@ -203,32 +189,18 @@ return {
                 GetColumnValueTypes = { sep = ":", sigs = { { params = { "Integer" }, returns = "[ ValueType ]" } } },
             },
             props = {
-            },
-        },
-        ["DBTableType"] = {
-            page = "https://developer.runescape.com/rs/game/config/dbtabletype.html",
-            methods = {
-            },
-            props = {
                 columnCount = { type = "Integer", ro = true },
                 configName = { type = "String", ro = true },
                 id = { type = "Integer", ro = true },
                 typeName = { type = "String", ro = true },
             },
         },
-        ["Enum"] = {
+        ["EnumType"] = {
             page = "https://developer.runescape.com/rs/game/config/enumtype.html",
             methods = {
                 GetInputValues = { sep = ":", sigs = { { params = { "?" }, returns = "[ ? ]" } } },
                 GetOutputValue = { sep = ":", sigs = { { params = { "?" }, returns = "?" } } },
                 HasOutputValue = { sep = ":", sigs = { { params = { "?" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
-        ["EnumType"] = {
-            page = "https://developer.runescape.com/rs/game/config/enumtype.html",
-            methods = {
             },
             props = {
                 configName = { type = "String", ro = true },
@@ -248,7 +220,7 @@ return {
             props = {
             },
         },
-        ["Font"] = {
+        ["FontType"] = {
             page = "https://developer.runescape.com/rs/game/config/fonttype.html",
             methods = {
                 GetSplitStringLine = { sep = ":", sigs = { { params = { "String", "Integer", "Integer", "Boolean?", "Boolean?", "Boolean?" }, returns = "String" } } },
@@ -257,13 +229,6 @@ return {
                 GetStringWidth = { sep = ":", sigs = { { params = { "String", "Boolean?" }, returns = "Integer" } } },
                 GetStringWidthMultiline = { sep = ":", sigs = { { params = { "String", "Integer", "Boolean?", "Boolean?", "Boolean?" }, returns = "Integer" } } },
                 SplitString = { sep = ":", sigs = { { params = { "String", "Integer", "Boolean?", "Boolean?", "Boolean?" }, returns = "[ String ]" } } },
-            },
-            props = {
-            },
-        },
-        ["FontType"] = {
-            page = "https://developer.runescape.com/rs/game/config/fonttype.html",
-            methods = {
             },
             props = {
                 baseline = { type = "Integer", ro = true },
@@ -512,15 +477,6 @@ return {
                 width = { type = "Integer", ro = true },
             },
         },
-        ["MapElement"] = {
-            page = "https://developer.runescape.com/rs/game/config/mapelementtype.html",
-            methods = {
-                GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
-                HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
         ["MapElementData"] = {
             page = "https://developer.runescape.com/rs/game/minimenu.html",
             methods = {
@@ -533,6 +489,8 @@ return {
         ["MapElementType"] = {
             page = "https://developer.runescape.com/rs/game/config/mapelementtype.html",
             methods = {
+                GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
+                HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
             },
             props = {
                 alignHorizontal = { type = "MapElementHorizontalAlign", ro = true },
@@ -928,15 +886,6 @@ return {
             props = {
             },
         },
-        ["Quest"] = {
-            page = "https://developer.runescape.com/rs/game/config/questtype.html",
-            methods = {
-                GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
-                HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
         ["QuestPreReqSkill"] = {
             page = "https://developer.runescape.com/rs/game/config/questtype.html",
             methods = {
@@ -949,6 +898,8 @@ return {
         ["QuestType"] = {
             page = "https://developer.runescape.com/rs/game/config/questtype.html",
             methods = {
+                GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
+                HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
             },
             props = {
                 canStartQuest = { type = "Boolean", ro = true },
@@ -1015,18 +966,11 @@ return {
             props = {
             },
         },
-        ["Seq"] = {
+        ["SeqType"] = {
             page = "https://developer.runescape.com/rs/game/config/seqtype.html",
             methods = {
                 GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
                 HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
-        ["SeqType"] = {
-            page = "https://developer.runescape.com/rs/game/config/seqtype.html",
-            methods = {
             },
             props = {
                 animDuplicateBehaviour = { type = "AnimationDuplicateBehaviour", ro = true },
@@ -1134,18 +1078,11 @@ return {
                 typeName = { type = "String", ro = true },
             },
         },
-        ["Struct"] = {
+        ["StructType"] = {
             page = "https://developer.runescape.com/rs/game/config/structtype.html",
             methods = {
                 GetParamValue = { sep = ":", sigs = { { params = { "ParamType" }, returns = "?" } } },
                 HasParam = { sep = ":", sigs = { { params = { "ParamType" }, returns = "Boolean" } } },
-            },
-            props = {
-            },
-        },
-        ["StructType"] = {
-            page = "https://developer.runescape.com/rs/game/config/structtype.html",
-            methods = {
             },
             props = {
                 configName = { type = "String", ro = true },

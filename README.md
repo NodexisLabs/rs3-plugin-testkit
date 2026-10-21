@@ -195,6 +195,7 @@ host Lua library.
 | `kit.inventory.setSlot(id, slot, obj, n)` / `remove(id)` | `InventoryUpdated` / `InventoryRemoved` |
 | `kit.ge.setOffer(slot, { type =, item =, price =, itemCount = })` | fires `GrandExchangeOfferUpdated` |
 | `kit.ids.add("NPC", "GOBLIN", 11240)` | a name for an `id.*` table (or use `--ids`, below) |
+| `kit.fonts.measureWith(function(font, text) ... end)` | the rule `FontType:GetStringWidth` uses (the kit has no font metrics); `config.Font.NAME` exists for every `id.Font` name |
 
 **Menus and UI**
 
@@ -206,6 +207,7 @@ host Lua library.
 | `kit.ui.texts()` | visible `ui.Text` contents, in creation order (hidden parents count) |
 | `kit.ui.button(label[, prefix])`, `kit.ui.press(label)` | press a visible, enabled button |
 | `kit.ui.click(component or "text")`, `kit.ui.drag(c, x1, y1, x2, y2)` | `ONCLICK`, `ONDRAG` / `ONDRAGCOMPLETE` |
+| `kit.ui.hold(c[, false])`, `kit.ui.hover(c[, false])`, `kit.mouse.set(x, y)` | `isClicked` / `isMouseOver` for code that polls them, firing `ONCLICK`/`ONRELEASE` and `ONMOUSEOVER`/`ONMOUSELEAVE` |
 | `kit.ui.find(fn)`, `kit.ui.all()`, `kit.ui.count()`, `kit.ui.dump()` | look around the tree |
 | `kit.ui.canvas(c)` | elements drawn on a `ui.Canvas` |
 

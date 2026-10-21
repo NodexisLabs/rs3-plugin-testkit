@@ -194,6 +194,8 @@ function Docs.class(name, opts)
     for pname, o in pairs(opts.overrides or {}) do
         props[pname] = props[pname] or {}
         for k, v in pairs(o) do props[pname][k] = v end
+        -- A computed property: a stored default would hide the reader.
+        if o.read and o.default == nil then props[pname].default = nil end
     end
 
     local methods, documented = {}, {}

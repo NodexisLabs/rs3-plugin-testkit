@@ -45,7 +45,10 @@ local function copy(v, seen)
     seen[v] = true
     local out = {}
     for k, x in pairs(v) do
-        if type(x) == "function" or type(x) == "userdata" or type(k) == "table" or getmetatable(x) then
+        -- Only tables can carry a kit/API metatable here (every string has
+        -- the string library's metatable, so it must not be checked).
+        if type(x) == "function" or type(x) == "userdata" or type(k) == "table"
+            or (type(x) == "table" and getmetatable(x) ~= nil) then
             error("rs3testkit: PersistentDB structured data can hold only plain tables, strings, numbers and booleans", 4)
         end
         out[k] = copy(x, seen)

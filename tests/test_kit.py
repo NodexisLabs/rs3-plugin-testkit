@@ -430,6 +430,78 @@ class FixturesWork(KitCase):
         self.assertPasses(r)
 
 
+class ProteusFeedback(KitCase):
+    """Gaps found moving Proteus onto the kit (2026-10-21)."""
+
+    def test_structured_data_with_strings(self):
+        r = self.run_spec("""
+            ok = PersistentDB:SetStructuredData("layout", { mode = "open", windows = { { title = "Tree" } } })
+        """, """
+            kit.start()
+            test("x", function()
+                expect(kit.env().ok).toBe(true)
+                expect(kit.db.get("layout").windows[1].title).toBe("Tree")
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_hold_and_hover_drive_polling_code(self):
+        r = self.run_spec("""
+            local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+            handle = ui.GroupBox.new(top)
+            handle.clickthrough = false
+            handle:Subscribe(ui.Hook.ONRELEASE, function() released = true end)
+            Event.Logic.Subscribe("drag", function()
+                if handle.isClicked then lastX = Mouse.GetX() end
+                hovering = handle.isMouseOver
+            end)
+        """, """
+            kit.start()
+            test("x", function()
+                local h = kit.env().handle
+                kit.mouse.set(10, 10)
+                kit.ui.hover(h)
+                kit.ui.hold(h)
+                kit.mouse.set(60, 10)
+                kit.tick()
+                expect(kit.env().lastX).toBe(60)
+                expect(kit.env().hovering).toBe(true)
+                kit.ui.hold(h, false)
+                expect(kit.env().released).toBe(true)
+                expect(h.isClicked).toBe(false)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_mock_on_an_object_points_at_mockMethod(self):
+        r = self.run_spec("", """
+            kit.start()
+            test("x", function() kit.mock("PersistentDB.GetInt", function() return 1 end) end)
+        """)
+        self.assertFailsWith(r, 'kit.mockMethod("PersistentDB", "GetInt", fn)')
+
+    def test_fonts_by_name_and_measuring(self):
+        r = self.run_spec("""
+            local font = config.Font.MUSEO_SANS_13PT_REGULAR
+            fontName = font.configName
+            width = font:GetStringWidth("Hello")
+        """, """
+            kit.fonts.measureWith(function(font, text) return #text * 7 end)
+            kit.start()
+            test("x", function()
+                expect(kit.env().fontName).toBe("MUSEO_SANS_13PT_REGULAR")
+                expect(kit.env().width).toBe(35)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_measuring_without_a_rule_fails_loudly(self):
+        r = self.run_spec("""
+            local w = config.Font.MUSEO_SANS_13PT_REGULAR:GetStringWidth("Hi")
+        """, 'test("x", function() kit.start() end)')
+        self.assertFailsWith(r, "kit.fonts.measureWith")
+
+
 class LintFalsePositives(KitCase):
     def test_container_layer_may_let_clicks_through(self):
         r = self.run_spec("""

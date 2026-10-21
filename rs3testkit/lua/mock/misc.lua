@@ -168,6 +168,7 @@ function M.install(api, kit)
     })
     kit.mouse = {}
     function kit.mouse.set(x, y) mouse.x, mouse.y = x, y end
+    function kit.mouse.get() return mouse.x, mouse.y end
     function kit.mouse.setAvailable(on) mouse.available = on end
 
     -- Keyboard.

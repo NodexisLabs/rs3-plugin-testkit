@@ -182,8 +182,9 @@ local componentOverrides = {
         while c do x = x + (Core.getRaw(c, "x") or 0); y = y + (Core.getRaw(c, "y") or 0); c = info[c].parent end
         return Vector.v2(x, y)
     end },
-    isMouseOver = { read = function() return false end },
-    isClicked = { read = function() return false end },
+    -- Pointer state, set by specs with kit.ui.hover / kit.ui.hold.
+    isMouseOver = { read = function(self) return info[self].hovered == true end },
+    isClicked = { read = function(self) return info[self].held == true end },
 }
 
 local collectionImpls = {
@@ -555,6 +556,34 @@ function M.install(api, kit)
         usable(c, "drag")
         fireHook(c, 7, x1, y1)
         fireHook(c, 8, nil, x2, y2)
+    end
+
+    -- Holds the mouse button down on a component (on = true) or lets go.
+    -- comp.isClicked reads true while held. Pressing fires ONCLICK and
+    -- letting go fires ONRELEASE, with the kit.mouse position, if the
+    -- component listens for them. Move the pointer meanwhile with
+    -- kit.mouse.set(x, y) and kit.tick() to test polling-based dragging.
+    function kit.ui.hold(c, on)
+        if on == nil then on = true end
+        if on then usable(c, "hold") end
+        local was = info[c].held == true
+        info[c].held = on and true or nil
+        local x, y = kit.mouse.get()
+        if on and not was then fireHook(c, 0, x, y)
+        elseif was and not on then fireHook(c, 2, x, y) end
+    end
+
+    -- Puts the pointer over a component (on = true) or takes it away.
+    -- comp.isMouseOver follows it; ONMOUSEOVER / ONMOUSELEAVE fire if the
+    -- component listens for them.
+    function kit.ui.hover(c, on)
+        if on == nil then on = true end
+        if on then usable(c, "hover") end
+        local was = info[c].hovered == true
+        info[c].hovered = on and true or nil
+        local x, y = kit.mouse.get()
+        if on and not was then fireHook(c, 4, x, y)
+        elseif was and not on then fireHook(c, 6, x, y) end
     end
 
     -- Fires any hook by name with the documented arguments after self.

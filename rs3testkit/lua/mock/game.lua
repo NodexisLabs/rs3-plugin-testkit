@@ -20,6 +20,7 @@ local Docs = require("docs")
 local Events = require("events")
 local Ids = require("ids")
 local Perms = require("perms")
+local Sandbox = require("sandbox")
 local Vector = require("vector")
 
 local M = {}
@@ -160,8 +161,19 @@ local function defineConfig(kind, id, fields)
     return c
 end
 
+-- Fonts are known by name from id.Font, so config.Font.FromID(n) and
+-- config.Font.NAME exist for every font in the id table (id and configName
+-- only; metrics stay unset unless a spec gives them).
+local function autoFont(id)
+    local ok, name = pcall(function() return Sandbox.api.id.Font[id] end)
+    if ok and type(name) == "string" then return defineConfig("Font", id, { configName = name }) end
+end
+
+local fontMeasure = nil     -- kit.fonts.measureWith(fn)
+
 local function getConfig(kind, id, level)
     local c = configs[kind].byId[id]
+    if c == nil and kind == "Font" and id ~= nil then c = autoFont(id) end
     if c == nil and id ~= nil then
         if configMissingIsNil then return nil end
         error("rs3testkit: config." .. kind .. ".FromID(" .. tostring(id) .. "): the spec defined no such config. " ..
@@ -174,7 +186,22 @@ end
 local function defineConfigs()
     for kind, cls in pairs(CONFIG_TYPES) do
         configs[kind] = { byId = {}, byName = {} }
+        local impls = nil
+        if kind == "Font" then
+            impls = {
+                -- Text width needs the game's font metrics, which the kit does
+                -- not have; a spec supplies the measuring rule it wants.
+                GetStringWidth = function(self, text)
+                    if not fontMeasure then
+                        Core.missing("FontType:GetStringWidth", true,
+                            "Give the kit a rule in your spec: kit.fonts.measureWith(function(font, text) return #text * 7 end).")
+                    end
+                    return math.floor(fontMeasure(self, text))
+                end,
+            }
+        end
         Docs.class(cls, {
+            impls = impls,
             strict = true,
             missingHint = "(Configs are game data; give it in the fixture: kit.config.define(\"" .. kind .. "\", id, { ... }).)",
             -- Live client: tostring gives "config.BaseAnimSet.POF_COW(4289)".
@@ -198,6 +225,10 @@ local function defineConfigs()
                 if key == "FromID" then return fromIDWrapped end
                 local c = configs[kind].byName[key]
                 if c then return c end
+                if kind == "Font" then
+                    local ok, number = pcall(function() return Sandbox.api.id.Font[key] end)
+                    if ok and type(number) == "number" then return getConfig("Font", number) end
+                end
                 error("rs3testkit: config." .. kind .. "." .. tostring(key) .. ": no config with that configName " ..
                     "in the fixture (kit.config.define(\"" .. kind .. "\", id, { configName = \"" .. tostring(key) .. "\" }))", 2)
             end,
@@ -699,6 +730,14 @@ function M.install(api, kit)
     function kit.config.loc(id, fields) return defineConfig("Loc", id, fields) end
     function kit.config.inv(id, fields) return defineConfig("Inv", id, fields) end
     function kit.config.missingIsNil(on) configMissingIsNil = on and true or false end
+
+    kit.fonts = {}
+    -- FontType:GetStringWidth(text) returns floor(fn(fontConfig, text)).
+    -- The kit has no real font metrics, so the spec chooses the rule.
+    function kit.fonts.measureWith(fn)
+        if type(fn) ~= "function" then error("kit.fonts.measureWith(fn): fn must be a function", 2) end
+        fontMeasure = fn
+    end
 
     kit.player = {}
     -- Sets player state. levels/xp are { SKILLNAME = n }; giving only a level
