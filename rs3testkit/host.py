@@ -179,6 +179,16 @@ class Session:
             return self.lua.table_from([self._json_to_lua(v) for v in value])
         return value
 
+    def start_activation(self) -> None:
+        """Record which plugin lines/functions run (kit.activation)."""
+        self.kit.activation.start()
+
+    def activation_events(self) -> list[dict]:
+        ev = self.kit.activation.events()
+        return [{"kind": e.kind, "plugin": e.plugin, "file": e.file,
+                 "line": int(e.line) if e.line is not None else None,
+                 "fn": e.fn, "test": e.test} for e in (ev[i] for i in range(1, len(ev) + 1))]
+
     def run_spec(self, spec_path: str | Path) -> list[dict]:
         spec_path = Path(spec_path).resolve()
         results = self.kit._runSpec(spec_path.as_posix(), spec_path.name)

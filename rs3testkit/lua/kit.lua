@@ -186,6 +186,81 @@ function kit.calls(api)
 end
 
 ---------------------------------------------------------------------------
+-- Code activation: which plugin lines and functions run
+---------------------------------------------------------------------------
+-- A Lua debug hook that sees only the plugins' own files (not the kit or
+-- the spec), so a run can show which code a behaviour touches. Each event
+-- goes to every sink as { kind = "line" | "call" | "return", file, line,
+-- fn, test }. This is the hook point for a live code-activation view; the
+-- runner's --activation FILE option writes the events as JSON lines.
+--   kit.activation.start()              collect into kit.activation.events()
+--   kit.activation.start(function(e) ... end, { lines = false })   calls only
+--   kit.activation.stop()
+kit.activation = {}
+local activation = { sinks = {}, events = {}, on = false, test = nil, limit = 200000 }
+
+local function pluginDirs()
+    local dirs = {}
+    local function walk(d)
+        dirs[#dirs + 1] = { prefix = "@" .. d.dir .. "/", plugin = d.name }
+        for i = 1, #d.deps do walk(d.deps[i]) end
+    end
+    walk(root)
+    return dirs
+end
+
+function kit.activation.start(sink, opts)
+    opts = opts or {}
+    if sink then activation.sinks[#activation.sinks + 1] = sink end
+    if activation.on then return end
+    activation.on = true
+    local dirs = pluginDirs()
+    local known = {}            -- source -> { file, plugin }, or false
+    local function fileOf(source)
+        local f = known[source]
+        if f ~= nil then return f end
+        f = false
+        for _, d in ipairs(dirs) do
+            if string.sub(source, 1, #d.prefix) == d.prefix then
+                f = { file = string.sub(source, #d.prefix + 1), plugin = d.plugin }
+                break
+            end
+        end
+        known[source] = f
+        return f
+    end
+    local mask = (opts.lines == false) and "cr" or "crl"
+    debug.sethook(function(kind, line)
+        local info = debug.getinfo(2, "Sn")
+        if not info then return end
+        local where = fileOf(info.source)
+        if not where then return end
+        local e = { kind = kind == "tail call" and "call" or kind, file = where.file, plugin = where.plugin,
+                    line = line or info.linedefined, fn = info.name, test = activation.test }
+        if #activation.sinks == 0 then
+            if #activation.events < activation.limit then
+                activation.events[#activation.events + 1] = e
+            else
+                Core.warn("activation-truncated", "the activation log stopped at " .. activation.limit ..
+                    " events (set kit.activation.setLimit(n), or pass { lines = false } for calls only)")
+            end
+        else
+            for _, s in ipairs(activation.sinks) do s(e) end
+        end
+    end, mask)
+end
+
+function kit.activation.stop()
+    debug.sethook()
+    activation.on = false
+    activation.sinks = {}
+end
+
+function kit.activation.events() return activation.events end
+function kit.activation.setLimit(n) activation.limit = n end
+function kit.activation.clear() activation.events = {} end
+
+---------------------------------------------------------------------------
 -- Running a spec file (called by the host)
 ---------------------------------------------------------------------------
 -- Output from specs and echoed plugin prints goes through the host (Python),
@@ -218,6 +293,7 @@ function kit._runSpec(path, displayName)
     fn()
     local seen = 0
     return Spec.run(function(result)
+        activation.test = nil
         -- Lints that only make sense once a test has finished (UI state).
         if kit.ui and kit.ui._lintAfterTest then kit.ui._lintAfterTest() end
         -- Lint warnings raised while this test ran belong to it.
@@ -228,7 +304,7 @@ function kit._runSpec(path, displayName)
         end
         seen = #Core.warnings
         result.warnings = mine
-    end)
+    end, function(t) activation.test = t.name end)
 end
 
 function kit._summary()

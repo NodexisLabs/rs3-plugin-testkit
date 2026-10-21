@@ -430,5 +430,26 @@ class FixturesWork(KitCase):
         self.assertPasses(r)
 
 
+class Activation(KitCase):
+    def test_records_plugin_lines_and_calls_per_test(self):
+        d = make_plugin(self.root, """
+            local function greet(name)
+                return "hi " .. name
+            end
+            Event.Logic.Subscribe("t", function(e) last = greet("tick") end)
+        """)
+        spec = self.root / "a_spec.lua"
+        spec.write_text('kit.start()\ntest("ticks", function() kit.tick() end)\n', encoding="utf-8")
+        s = Session(d)
+        s.start_activation()
+        self.assertTrue(s.run_spec(spec)[0]["ok"])
+        events = s.activation_events()
+        self.assertTrue(events)
+        self.assertTrue(all(e["file"] == "main.lua" for e in events))     # kit and spec code excluded
+        calls = [e for e in events if e["kind"] == "call" and e["test"] == "ticks"]
+        self.assertIn("greet", [e["fn"] for e in calls])
+        self.assertIn(3, [e["line"] for e in events if e["kind"] == "line" and e["test"] == "ticks"])
+
+
 if __name__ == "__main__":
     unittest.main()

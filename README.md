@@ -221,6 +221,24 @@ host Lua library.
 | `kit.console.lines()`, `kit.console.expectNo("ERROR")` | the plugin's `print` output |
 | `kit.warnings()`, `kit.trace(n)`, `kit.calls("Player.GetEntity")` | lint findings and every API call the plugin made |
 
+## Code activation
+
+`rs3test run ... --activation run.jsonl` records every line, call and return
+that runs inside the plugin's own files, including its dependencies but not
+the kit or the spec. Each event is tagged with the test that was running:
+
+```json
+{"spec": "window_spec.lua", "test": "clicking a drop opens that item", "kind": "call", "plugin": "Advanced Examine", "file": "views.lua", "line": 88, "fn": "quantityText"}
+```
+
+This shows which code a behaviour touches, for the developer or for a
+reviewer. In a spec, `kit.activation.start(sink)` streams the same events to
+a function as they happen, which is the hook point for a live code view.
+`{ lines = false }` limits it to calls and returns. The log stops at 200,000
+events per file and says so in a lint; raise the cap with
+`kit.activation.setLimit(n)`. It runs on Lua's `debug.sethook`, so it works
+only offline: the client sandbox is not known to provide `debug` (unverified).
+
 ## Manifest rules (`rs3test check`)
 
 | Rule | Level |

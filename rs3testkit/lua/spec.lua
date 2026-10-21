@@ -142,12 +142,14 @@ end
 ---------------------------------------------------------------------------
 -- Running
 ---------------------------------------------------------------------------
--- Runs every registered test. `after` is called after each test (the kit
--- uses it to collect lint warnings). Returns a list of result tables:
+-- Runs every registered test. `before(test)` and `after(result)` are called
+-- around each one (the kit uses them for the activation log and lint
+-- warnings). Returns a list of result tables:
 --   { file, name, ok, error, ms }
-function Spec.run(after)
+function Spec.run(after, before)
     local results = {}
     for _, t in ipairs(tests) do
+        if before then before(t) end
         local start = os.clock()
         local ok, err = xpcall(t.fn, function(message)
             return debug.traceback(tostring(message), 2)

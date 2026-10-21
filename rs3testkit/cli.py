@@ -11,6 +11,7 @@ Exit code 0 means everything passed; 1 means a check or a test failed;
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -103,11 +104,17 @@ def cmd_run(args) -> int:
     http_total = 0
     http_endpoints: dict[str, int] = {}
     started = time.perf_counter()
+    activation_out = open(args.activation, "w", encoding="utf-8") if args.activation else None
     for spec in specs:
         print(f"\n{spec}")
         try:
             session = Session(plugin_dir, deps, args.search, echo=args.echo)
+            if activation_out:
+                session.start_activation()
             results = session.run_spec(spec)
+            if activation_out:
+                for e in session.activation_events():
+                    activation_out.write(json.dumps({"spec": spec.name, **e}) + "\n")
         except KitError as e:
             print(f"rs3test: {e}")
             return 2
@@ -130,6 +137,9 @@ def cmd_run(args) -> int:
         for k, v in s["httpByEndpoint"].items():
             http_endpoints[k] = http_endpoints.get(k, 0) + v
 
+    if activation_out:
+        activation_out.close()
+        print(f"Activation log: {args.activation} (plugin lines/calls per test, JSON lines)")
     seconds = time.perf_counter() - started
     failed = [r for r in all_results if not r["ok"]]
     print(f"\n{len(all_results) - len(failed)} passed, {len(failed)} failed, {len(specs)} spec file(s), {seconds:.1f} s")
@@ -161,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--echo", action="store_true", help="show the plugin's print() output")
     p.add_argument("--junit", metavar="FILE", help="write a JUnit XML report (for CI)")
     p.add_argument("--no-check", action="store_true", help="skip the manifest check")
+    p.add_argument("--activation", metavar="FILE",
+                   help="write every plugin line/call/return that ran, per test, as JSON lines")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_run)
 
