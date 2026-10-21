@@ -415,7 +415,9 @@ local function lint()
                 ((Core.getRaw(c, "modelWidth") or 0) == 0 or (Core.getRaw(c, "modelHeight") or 0) == 0) then
                 Core.warn("model-invisible", "a visible ui.Model has modelWidth/modelHeight 0, which draws nothing in the client")
             end
-            if info[c].parent == root and Core.getRaw(c, "clickthrough") ~= false then
+            -- A bare ui.Layer is an invisible container (often full screen):
+            -- it must let clicks through, so only visible components count.
+            if info[c].parent == root and cls ~= "ui.Layer" and Core.getRaw(c, "clickthrough") ~= false then
                 Core.warn("clickthrough", "a visible " .. cls .. " on the plugin layer has clickthrough = true: " ..
                     "clicks on it also reach the game world (and walk the player)")
             end

@@ -430,6 +430,17 @@ class FixturesWork(KitCase):
         self.assertPasses(r)
 
 
+class LintFalsePositives(KitCase):
+    def test_container_layer_may_let_clicks_through(self):
+        r = self.run_spec("""
+            local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+            local root = ui.Layer.new(top)          -- full-screen container, clickthrough stays true
+            local box = ui.GroupBox.new(root)
+            box.clickthrough = false
+        """, 'test("x", function() kit.start() end)')
+        self.assertNotIn("clickthrough", " ".join(r[0]["warnings"]))
+
+
 class StubIds(KitCase):
     """--ids reads id tables from a local clone of runescape-api-stubs."""
 
