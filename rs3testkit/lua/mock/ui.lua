@@ -200,7 +200,17 @@ local componentOverrides = {
     end },
     -- Pointer state, set by specs with kit.ui.hover / kit.ui.hold.
     isMouseOver = { read = function(self) return info[self].hovered == true end },
-    isClicked = { read = function(self) return info[self].held == true end },
+    isClicked = { read = function(self)
+        local i = info[self]
+        if i.held and not isShown(self) then
+            Core.warn("sticky-isClicked", "read isClicked on a " .. Core.classOf(self) .. " that was hidden while " ..
+                "pressed: in the live client it stays true indefinitely (the release never arrives), so " ..
+                "polling code sees a button held forever. Check visibleGlobal, or destroy hidden targets")
+        end
+        return i.held == true
+    end },
+    -- A fresh drag config per component; the plugin edits its fields in place.
+    dragConfig = { type = "ui.ComponentDragConfig", default = function() return Core.new("ui.ComponentDragConfig") end },
 }
 
 local collectionImpls = {
@@ -240,6 +250,16 @@ local function iconSetter(self, objectID, quantity)
 end
 
 local function defineClasses()
+    -- Not picked up by the doc extractor (its page lists fields without a
+    -- Properties heading), so the documented fields are written out here.
+    Docs.class("ui.ComponentDragConfig", {
+        props = {
+            deadZone = { type = "number", default = 0 },          -- Uint8, interface units
+            dragDelayTicks = { type = "number", default = 0 },    -- Uint8, logic ticks
+            renderBehaviour = { type = "number|string", default = 0 },   -- ui.DragRenderBehaviour
+            draggedComponent = { readonly = true },               -- set while kit.ui.drag runs
+        },
+    })
     Docs.class("ui.Component", {
         impls = componentImpls, defaults = componentDefaults, overrides = componentOverrides,
         recordSetters = true, native = "jag::ui::Component",
@@ -555,6 +575,9 @@ function M.install(api, kit)
             Core.warn("press-no-listener", "pressed " .. Core.classOf(c) .. " '" .. tostring(Core.getRaw(c, "label")) ..
                 "' but it has no ONBUTTONPRESSED listener")
         end
+        -- Live client: if the press hid the button (or its window), the
+        -- release never reaches it and isClicked stays true.
+        if not isShown(c) then info[c].held = true end
     end
 
     -- Clicks a component (ONCLICK), or the visible Text with that content.
@@ -565,13 +588,23 @@ function M.install(api, kit)
         if not fireHook(c, 0, x or 0, y or 0) then
             error("kit.ui.click: the " .. Core.classOf(c) .. " has no ONCLICK listener (nothing would happen)", 2)
         end
+        if not isShown(c) then info[c].held = true end   -- see kit.ui.press
     end
 
     -- Drags a component from (x1, y1) to (x2, y2): ONDRAG then ONDRAGCOMPLETE.
+    -- ONDRAG fires once at the start (as seen live), then ONDRAGCOMPLETE.
+    -- A move shorter than dragConfig.deadZone (larger of the x and y
+    -- distances) is not a drag, so neither fires.
     function kit.ui.drag(c, x1, y1, x2, y2)
         usable(c, "drag")
+        local cfg = Core.getRaw(c, "dragConfig")
+        local dead = cfg and Core.getRaw(cfg, "deadZone") or 0
+        if math.max(math.abs(x2 - x1), math.abs(y2 - y1)) < dead then return false end
+        if cfg then Core.setRaw(cfg, "draggedComponent", c) end
         fireHook(c, 7, x1, y1)
         fireHook(c, 8, nil, x2, y2)
+        if cfg then Core.setRaw(cfg, "draggedComponent", nil) end
+        return true
     end
 
     -- Holds the mouse button down on a component (on = true) or lets go.
@@ -583,6 +616,8 @@ function M.install(api, kit)
         if on == nil then on = true end
         if on then usable(c, "hold") end
         local was = info[c].held == true
+        -- A component hidden while held never gets the release (live client).
+        if not on and was and not isShown(c) then return end
         info[c].held = on and true or nil
         local x, y = kit.mouse.get()
         if on and not was then fireHook(c, 0, x, y)

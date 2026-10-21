@@ -502,6 +502,70 @@ class ProteusFeedback(KitCase):
         self.assertFailsWith(r, "kit.fonts.measureWith")
 
 
+class LiveClientFindings(KitCase):
+    """Behaviour measured in the beta client on 2026-10-21."""
+
+    def test_component_hidden_by_its_own_press_stays_clicked(self):
+        r = self.run_spec("""
+            local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+            box = ui.GroupBox.new(top)
+            box.clickthrough = false
+            close = ui.Button.new(box)
+            close.clickthrough = false
+            close.label = "X"
+            close:Subscribe(ui.Hook.ONBUTTONPRESSED, function() box.hidden = true end)
+        """, """
+            kit.start()
+            test("x", function()
+                kit.ui.press("X")
+                local close = kit.env().close
+                expect(close.isClicked).toBe(true)          -- the release never arrives
+                kit.ui.hold(close, false)
+                expect(close.isClicked).toBe(true)
+            end)
+        """)
+        self.assertPasses(r)
+        self.assertIn("sticky-isClicked", " ".join(r[0]["warnings"]))
+
+    def test_drag_config_and_dead_zone(self):
+        r = self.run_spec("""
+            local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+            bar = ui.GroupBox.new(top)
+            bar.clickthrough = false
+            bar.dragConfig.deadZone = 5
+            bar.dragConfig.renderBehaviour = ui.DragRenderBehaviour.INVISIBLE
+            drags = 0
+            bar:Subscribe(ui.Hook.ONDRAG, function() drags = drags + 1 end)
+        """, """
+            kit.start()
+            test("x", function()
+                local bar = kit.env().bar
+                expect(kit.ui.drag(bar, 10, 10, 13, 12)).toBe(false)   -- inside the dead zone
+                expect(kit.env().drags).toBe(0)
+                expect(kit.ui.drag(bar, 10, 10, 40, 10)).toBe(true)
+                expect(kit.env().drags).toBe(1)
+                expect(bar.dragConfig.deadZone).toBe(5)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_component_type_values(self):
+        r = self.run_spec("""
+            local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+            layerType = ui.Layer.new(top).type
+            boxType = ui.GroupBox.new(top).type
+        """, """
+            kit.start()
+            test("x", function()
+                expect(kit.env().layerType).toBe(20)
+                expect(kit.env().boxType).toBe(24)
+                expect(ui.ComponentType.BUTTON).toBe(9)
+                expect(ui.ComponentType.FromID(19)).toBeNil()
+            end)
+        """)
+        self.assertPasses(r)
+
+
 class LintFalsePositives(KitCase):
     def test_container_layer_may_let_clicks_through(self):
         r = self.run_spec("""
