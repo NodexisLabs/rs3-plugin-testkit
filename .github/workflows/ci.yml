@@ -33,6 +33,6 @@ jobs:
       - name: The kit has no network code
         shell: bash
         run: |
-          if grep -rnE "^\s*(import|from)\s+(socket|ssl|urllib|http|requests|aiohttp|httpx)" rs3testkit --include=*.py; then
+          if grep -rnE "^\s*(import|from)\s+(socket|ssl|urllib|http|requests|aiohttp|httpx)" rs3testkit --include=*.py; then
             echo "network code found in rs3testkit/"; exit 1
           fi
