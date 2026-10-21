@@ -1,0 +1,12 @@
+{
+    "name": "devlink",
+    "version": "0.1.0",
+    "contactEmailAddress": "dev-only@example.invalid",
+    "dependencies": {},
+    "optionalPermissions": [
+        "httpAccess"
+    ],
+    "urls": {
+        "devlink": "http://127.0.0.1:8765"
+    }
+}
