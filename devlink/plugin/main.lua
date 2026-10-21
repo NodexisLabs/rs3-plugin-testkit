@@ -1,9 +1,9 @@
 -- devlink: dev-only troubleshooting bridge. NEVER submit this plugin.
 --
--- Sends read-only game state to a local server (devlink/server.py on
--- 127.0.0.1:8765) and answers read-only commands it polls from there.
--- It cannot act in the game: the plugin API has no way to send input, and
--- every command below only reads.
+-- Sends game state to a local server (devlink/server.py on 127.0.0.1:8765)
+-- and answers commands it polls from there. It cannot act in the game: the
+-- plugin API has no way to send input. Every command below only reads,
+-- except eval, which runs any Lua sent to it inside this plugin's sandbox.
 --
 -- Commands (sent with `python server.py cmd "<command>"`):
 --   help                     list commands
@@ -130,7 +130,7 @@ local function resolve(path)
 end
 
 ---------------------------------------------------------------------------
--- Commands (all read-only)
+-- Commands (read-only, except eval)
 ---------------------------------------------------------------------------
 local commands = {}
 

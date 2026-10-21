@@ -11,7 +11,9 @@ doing while you test. It is a dev-only plugin: **never submit it to the Plugin H
 - `rs-shot.ps1` captures only the client's window (or just the console) to `shots/`, and refuses if
   another window covers it, so no other app ends up in the image. It never moves or focuses windows.
 
-It cannot act in the game: the plugin API has no way to send input, and the commands only read.
+It cannot act in the game: the plugin API has no way to send input. The commands only read, except
+`eval`, which runs any Lua you send inside the devlink plugin's sandbox, so it can do whatever a
+plugin can. That is why the server needs its key.
 The kit's offline parts still have no network code; devlink is kept in this folder on its own.
 
 ## Commands

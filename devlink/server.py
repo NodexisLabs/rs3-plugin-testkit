@@ -14,8 +14,9 @@ key.txt next to this file; rs3-dev.ps1 deploy copies it into the plugin. Clients
 it as a path prefix (/k/<key>/poll, what the plugin uses) or an X-Devlink-Key header.
 
 Everything the plugin sends is appended to logs/devlink-<date>.jsonl.
-Read-only by design: the game API offers no way to send input, and the plugin
-only implements read-only commands.
+The game API offers no way to send input. The plugin's commands only read,
+except eval, which runs any Lua it is sent inside the plugin's sandbox; that is
+why every request needs the key.
 
     python server.py                 # serve on 127.0.0.1:8765
     python server.py cmd "npcs"      # send a command and print the answer
