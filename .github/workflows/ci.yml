@@ -1,0 +1,38 @@
+# CI for the test kit itself: self-tests, the example plugin, and a check
+# that the kit makes no network calls while it runs.
+name: kit
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python -m pip install -e .
+      - name: Self-tests
+        run: python -m unittest discover -s tests -v
+      - name: Example plugin
+        run: |
+          rs3test check examples/xp-counter/plugin
+          rs3test run examples/xp-counter/plugin examples/xp-counter/spec --junit junit-example.xml
+      - name: The kit has no network code
+        shell: bash
+        run: |
+          if grep -rnE "^\s*(import|from)\s+(socket|ssl|urllib|http|requests|aiohttp|httpx)" rs3testkit --include=*.py; then
+            echo "network code found in rs3testkit/"; exit 1
+          fi

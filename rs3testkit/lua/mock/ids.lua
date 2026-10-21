@@ -1,0 +1,101 @@
+-- id.* tables and the API's enums.
+--
+-- id tables map game config names to numbers (id.StyleSheet.BUTTON_DEFAULT
+-- is 96). The real tables are large game data; the kit carries the
+-- stylesheets and font names seen in a live client (ids_observed.lua) and a
+-- few named ids the docs and plugins use. Anything else raises an error that
+-- tells the spec how to add it:
+--
+--   kit.ids.add("NPC", "GOBLIN", 11240)
+--
+-- Enums: values come from the docs where published, from a live client
+-- where seen (ui.Hook, ui.AlignMode, ui.ModelType), otherwise the kit
+-- numbers them in doc order (Docs.kitAssigned lists those).
+
+local Core = require("core")
+local Docs = require("docs")
+local Observed = require("ids_observed")
+
+local M = {}
+
+-- id.Component entries are interface__component names. The plugin layer's
+-- real number is not known; the kit assigns one.
+local COMPONENTS = {
+    TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP = 900001,
+}
+
+local function fontTable()
+    local entries = {}
+    for i, name in ipairs(Observed.FontNames) do entries[name] = 1000 + i end
+    return entries
+end
+
+-- Live values (2026-10-20). ui.Hook is a plain table in the client (pairs
+-- lists it); the others keep members in the metatable.
+local HOOKS = {
+    ONBUTTONPRESSED = 49, ONCAMERAUPDATETRANSMIT = 33, ONCAMFINISHED = 41, ONCHATTRANSMIT = 23,
+    ONCLANCHANNELTRANSMIT = 27, ONCLANSETTINGSTRANSMIT = 26, ONCLANTRANSMIT = 25, ONCLICK = 0,
+    ONCLICKREPEAT = 1, ONCONTENTCHANGED = 50, ONCUTSCENEFINISHED = 53, ONDIALOGABORT = 39, ONDRAG = 7,
+    ONDRAGCOMPLETE = 8, ONFRIENDTRANSMIT = 24, ONGAMEPADAXIS = 13, ONGAMEPADBUTTON = 11,
+    ONGAMEPADBUTTONHELD = 12, ONGAMEPADTRIGGER = 14, ONHOLD = 3, ONINVTRANSMIT = 18, ONKEY = 10,
+    ONMISCTRANSMIT = 29, ONMOUSELEAVE = 6, ONMOUSEOVER = 4, ONMOUSEREPEAT = 5, ONOP = 37, ONOPT = 38,
+    ONPINCHCOMPLETE = 48, ONPINCHHORIZONTAL = 47, ONPINCHVERTICAL = 46, ONPLAYERGROUPTRANSMIT = 31,
+    ONPLAYERGROUPVARPTRANSMIT = 32, ONPLUGINSEARCHEVENT = 55, ONPLUGINSTATUSEVENT = 56,
+    ONRELATIONSHIPSETTRANSMIT = 28, ONRELEASE = 2, ONRESIZE = 42, ONSCROLLWHEEL = 9,
+    ONSELECTIONCHANGED = 51, ONSTATTRANSMIT = 19, ONSTOCKTRANSMIT = 30, ONSUBCHANGE = 40,
+    ONSWIPECOMPLETE = 45, ONSWIPEHORIZONTAL = 44, ONSWIPEVERTICAL = 43, ONTARGETENTER = 15,
+    ONTARGETLEAVE = 16, ONTIMER = 36, ONUIANIMFINISHED = 54, ONVARCLANTRANSMIT = 22,
+    ONVARCSTRTRANSMIT = 21, ONVARCTRANSMIT = 20, ONVARPTRANSMIT = 17,
+}
+local OBSERVED_ENUMS = {
+    ["ui.AlignMode"] = { TOPLEFT = 0, CENTRE = 1, BOTTOMRIGHT = 2, JUSTIFY = 3 },
+    ["ui.ModelType"] = { OBJECT = 4, NPC_MODEL = 6 },
+}
+
+M.hookNames = {}
+for name, value in pairs(HOOKS) do M.hookNames[value] = name end
+
+-- Builds every documented enum; returns { globals = {...}, ui = {...}, audio = {...} }.
+function M.enums()
+    local out = { globals = {}, ui = {}, audio = {} }
+    for name in pairs(Docs.data.enums) do
+        local enum = Docs.enum(name, OBSERVED_ENUMS[name])
+        local ns, short = string.match(name, "^(%w+)%.(%w+)$")
+        if ns == "ui" then out.ui[short] = enum
+        elseif ns == "audio" then out.audio[short] = enum
+        elseif ns == nil then out.globals[name] = enum
+        end
+    end
+    out.ui.Hook = Core.enum("ui.Hook", HOOKS, { listed = true })
+    return out
+end
+
+function M.install(api, kit)
+    local tables = {
+        Component = Core.idTable("id.Component", COMPONENTS),
+        StyleSheet = Core.idTable("id.StyleSheet", Observed.StyleSheet),
+        Font = Core.idTable("id.Font", fontTable()),
+    }
+    -- Game config id tables: empty until a spec adds names.
+    for _, kind in ipairs({ "NPC", "Obj", "Loc", "Seq", "Model", "Material", "Category", "Inv", "Var",
+                            "DBTable", "DBRow", "Enum", "Struct", "Param", "Quest", "SpotAnim",
+                            "Cursor", "MapElement", "Achievement", "BaseAnimSet", "Headbar", "Hitmark" }) do
+        tables[kind] = Core.idTable("id." .. kind, {})
+    end
+    api.id = Core.namespace("id", { members = tables })
+
+    kit.ids = {}
+    -- Adds a name -> number entry to an id table (id.<kind>.<name>).
+    function kit.ids.add(kind, name, number)
+        local t = tables[kind]
+        if not t then error("kit.ids.add: no id table " .. tostring(kind), 2) end
+        if type(name) ~= "string" or math.type(number) ~= "integer" then
+            error("kit.ids.add(kind, name, number): name must be a string and number an integer", 2)
+        end
+        Core.idAdd(t, name, number)
+    end
+    -- The number the kit uses for the plugin layer component.
+    kit.ids.PLUGIN_LAYER = COMPONENTS.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP
+end
+
+return M
