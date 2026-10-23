@@ -104,6 +104,28 @@ local r = kit.pointer.release()              -- { released, dropped = reason, st
 
 The model came from Proteus's live tests.
 
+### A noisy neighbour (`kit.neighbour`)
+
+Players run several UI plugins at once, all on the same plugin layer.
+`kit.neighbour{...}` adds a stand-in for another plugin that behaves the way
+yours has to survive:
+
+```lua
+local n = kit.neighbour{
+    frontOnPress = true,                        -- jumps to the front every frame while a press is held
+    window = { 500, 300, 200, 120 },            -- its own clickable body
+    overlays = { { 140, 95, 60, 40 } },         -- clickables over other UIs
+    dock = { edge = "top", w = 300, pills = 3 },  -- pills centred on an edge, where docks collide
+}
+```
+
+Its root is a full-screen clickthrough `ui.Layer`, and its clickables are
+`ui.Canvas` components with `ONCLICK`, so code that scans the shared layer
+sees a realistic tree. The handle has `root`, `body`, `overlays`, `pills`,
+`fronts` (how often it jumped forward), `clicks(c)` and `destroy()`. With
+`kit.pointer`, it shows whether a drag in your plugin ends cleanly when
+another plugin takes the cursor. The shape also came from Proteus.
+
 ### Behaviour from a live client
 
 These were found by running plugins in the beta client (October 2026). The
@@ -243,6 +265,7 @@ host Lua library.
 | `kit.pointer.press(x, y)`, `.move(x, y)`, `.release()`, `.click(x, y)` | a real mouse: hit-tests the layer and applies the client's press rules (below) |
 | `kit.ui.hold(c[, false])`, `kit.ui.hover(c[, false])`, `kit.ui.drop(c)`, `kit.mouse.set(x, y)` | set `isClicked` / `isMouseOver` on one component directly (`drop` ends a press with no release) |
 | `kit.ui.reorders(c)`, `kit.ui.calls(c)` | how often `MoveToFront`/`MoveToBack` moved it; the void visual calls it received |
+| `kit.neighbour{ frontOnPress =, window =, overlays =, dock = }` | another plugin on the shared layer (below) |
 | `kit.ui.find(fn)`, `kit.ui.all()`, `kit.ui.count()`, `kit.ui.dump()` | look around the tree |
 | `kit.ui.canvas(c)` | elements drawn on a `ui.Canvas` |
 

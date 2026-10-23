@@ -663,6 +663,56 @@ class Pointer(KitCase):
         self.assertPasses(r)
 
 
+class Neighbour(KitCase):
+    """kit.neighbour: another plugin on the shared layer."""
+
+    def test_shape_dock_and_clicks(self):
+        r = self.run_spec("", """
+            kit.start()
+            test("x", function()
+                local n = kit.neighbour{ window = { 500, 300, 200, 120 }, overlays = { { 0, 0, 50, 50 } },
+                                         dock = { edge = "top", w = 300, pills = 3 } }
+                expect(kit.ui.kind(n.root)).toBe("ui.Layer")
+                expect(n.root.clickthrough).toBe(true)
+                expect(kit.ui.kind(n.body)).toBe("ui.Canvas")
+                expect(#n.pills).toBe(3)
+                local x, y, w, h = kit.pointer.rect(n.pills[1])
+                expect(x).toBe((1278 - 300) / 2)      -- centred on the top edge
+                expect(y).toBe(4)
+                kit.pointer.click(510, 310)
+                expect(n.clicks(n.body)).toBe(1)
+                n.destroy()
+                expect(kit.pointer.topmost(510, 310)).toBeNil()
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_front_on_press_steals_a_held_drag(self):
+        r = self.run_spec(POINTER_UI, """
+            kit.start()
+            test("x", function()
+                -- the neighbour's overlay covers the plugin window's title bar,
+                -- but sits behind it until the neighbour jumps to the front
+                local n = kit.neighbour{ overlays = { { 140, 95, 60, 40 } } }
+                kit.env().win:MoveToFront()
+                expect(kit.pointer.press(150, 105)).toBe(kit.env().title)
+                kit.tick()                            -- neighbour jumps forward mid-press
+                local r = kit.pointer.release()
+                expect(n.fronts).toBe(1)
+                expect(r.released).toBe(false)
+                expect(r.dropped).toContain("took the cursor")
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_options_are_checked(self):
+        r = self.run_spec("", """
+            kit.start()
+            test("x", function() kit.neighbour{ front = true } end)
+        """)
+        self.assertFailsWith(r, "unknown option front")
+
+
 class LintFalsePositives(KitCase):
     def test_container_layer_may_let_clicks_through(self):
         r = self.run_spec("""

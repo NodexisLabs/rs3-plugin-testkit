@@ -155,6 +155,13 @@ local function setSize(self, w, h)
     Core.setRaw(self, "height", h)
 end
 
+local function reorder(c, front)
+    detach(c)
+    if front then table.insert(info[info[c].parent].children, c)
+    else table.insert(info[info[c].parent].children, 1, c) end
+    info[c].reorders = (info[c].reorders or 0) + 1
+end
+
 local componentImpls = {
     SetPos = setPos,
     SetX = function(self, x) Core.setRaw(self, "x", x) end,
@@ -171,17 +178,13 @@ local componentImpls = {
         destroy(self, "Destroy()")
     end,
     MoveToFront = function(self)
-        detach(self)
-        table.insert(info[info[self].parent].children, self)
-        info[self].reorders = (info[self].reorders or 0) + 1
+        reorder(self, true)
         local log = Docs.recordedCalls[self] or {}
         Docs.recordedCalls[self] = log
         log[#log + 1] = { name = "MoveToFront", args = table.pack() }
     end,
     MoveToBack = function(self)
-        detach(self)
-        table.insert(info[info[self].parent].children, 1, self)
-        info[self].reorders = (info[self].reorders or 0) + 1
+        reorder(self, false)
         local log = Docs.recordedCalls[self] or {}
         Docs.recordedCalls[self] = log
         log[#log + 1] = { name = "MoveToBack", args = table.pack() }
@@ -781,6 +784,100 @@ function M.install(api, kit)
         local r = kit.pointer.release()
         r.target = c
         return r
+    end
+
+    ---------------------------------------------------------------------
+    -- kit.neighbour: another plugin sharing the plugin layer, behaving
+    -- badly in the ways UI plugins have to survive (shape from Proteus):
+    --   kit.neighbour{
+    --       frontOnPress = true,               -- MoveToFront its root every Logic/Draw
+    --                                          -- frame while any pointer press is held
+    --       window = { x, y, w, h },           -- its own clickable body
+    --       overlays = { { x, y, w, h }, ... },  -- clickables over other UIs
+    --       dock = "top" | { edge = "top", w = 300, pills = 3 },  -- pills centred on an edge
+    --   }
+    -- Its root is a full-screen clickthrough ui.Layer and every clickable is
+    -- a ui.Canvas with an ONCLICK listener, so code that scans the shared
+    -- layer sees a realistic tree. Returns { root, body, overlays, pills,
+    -- fronts (count), clicks(c) -> n, destroy() }.
+    ---------------------------------------------------------------------
+    local PILL_H, PILL_GAP, EDGE_MARGIN = 28, 8, 4
+
+    function kit.neighbour(opts)
+        opts = opts or {}
+        for k in pairs(opts) do
+            if not ({ frontOnPress = 1, window = 1, overlays = 1, dock = 1 })[k] then
+                error("kit.neighbour: unknown option " .. tostring(k), 2)
+            end
+        end
+        local W, H = Core.getRaw(root, "width"), Core.getRaw(root, "height")
+        local n = { overlays = {}, pills = {}, fronts = 0 }
+        local clicks = setmetatable({}, { __mode = "k" })
+
+        local nroot = M.create("ui.Layer", root)
+        Core.setRaw(nroot, "x", 0); Core.setRaw(nroot, "y", 0)
+        Core.setRaw(nroot, "width", W); Core.setRaw(nroot, "height", H)
+        n.root = nroot
+
+        local function clickable(rect, what)
+            local x, y, w, h = rect[1] or rect.x, rect[2] or rect.y, rect[3] or rect.w, rect[4] or rect.h
+            if not (x and y and w and h) then error("kit.neighbour: " .. what .. " needs { x, y, w, h }", 3) end
+            local c = M.create("ui.Canvas", nroot)
+            Core.setRaw(c, "x", x); Core.setRaw(c, "y", y)
+            Core.setRaw(c, "width", w); Core.setRaw(c, "height", h)
+            Core.setRaw(c, "clickthrough", false)
+            clicks[c] = 0
+            subscribe(c, 0, function() clicks[c] = clicks[c] + 1 end)
+            return c
+        end
+
+        if opts.window then n.body = clickable(opts.window, "window") end
+        for _, r in ipairs(opts.overlays or {}) do n.overlays[#n.overlays + 1] = clickable(r, "an overlay") end
+
+        if opts.dock then
+            local d = type(opts.dock) == "string" and { edge = opts.dock } or opts.dock
+            local edge, count, total = d.edge or "top", d.pills or 3, d.w or 300
+            if edge == "top" or edge == "bottom" then
+                local pw = (total - PILL_GAP * (count - 1)) / count
+                local x = (W - total) / 2
+                local y = (edge == "top") and EDGE_MARGIN or (H - PILL_H - EDGE_MARGIN)
+                for i = 1, count do
+                    n.pills[i] = clickable({ x + (i - 1) * (pw + PILL_GAP), y, pw, PILL_H }, "a pill")
+                end
+            elseif edge == "left" or edge == "right" then
+                local ph = (total - PILL_GAP * (count - 1)) / count
+                local y = (H - total) / 2
+                local x = (edge == "left") and EDGE_MARGIN or (W - 90 - EDGE_MARGIN)
+                for i = 1, count do
+                    n.pills[i] = clickable({ x, y + (i - 1) * (ph + PILL_GAP), 90, ph }, "a pill")
+                end
+            else
+                error("kit.neighbour: dock edge must be top, bottom, left or right", 2)
+            end
+        end
+
+        if opts.frontOnPress ~= false then
+            local function hook()
+                if not Core.destroyed[nroot] and kit.pointer.holding() then
+                    reorder(nroot, true)
+                    n.fronts = n.fronts + 1
+                end
+            end
+            table.insert(kit._frameHooks, 1, hook)   -- before the pointer re-checks the press
+            n._hook = hook
+        end
+
+        function n.clicks(c) return clicks[c] or 0 end
+        function n.destroy()
+            detach(nroot)
+            destroy(nroot, "kit.neighbour destroy()")
+            if n._hook then
+                for i, h in ipairs(kit._frameHooks) do
+                    if h == n._hook then table.remove(kit._frameHooks, i); break end
+                end
+            end
+        end
+        return n
     end
 
     function kit.pointer.target() return P.pressed end
