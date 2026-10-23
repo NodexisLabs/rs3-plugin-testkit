@@ -175,16 +175,21 @@ function M.install(api, kit)
             for _, hook in ipairs(kit._tickHooks) do hook(logicTick) end
             fire("Logic", { logicTick = logicTick })
             if logicTick % SERVER_TICK == 0 then fire("ServerLogic") end
+            for _, hook in ipairs(kit._frameHooks) do hook() end
         end
     end
     kit._tickHooks = {}
+    kit._frameHooks = {}      -- run after every Logic and Draw (kit.pointer)
 
     -- Advances by game time: kit.seconds(1.2) = 60 logic ticks.
     function kit.seconds(s) kit.tick(math.floor(s * 50 + 0.5)) end
 
     -- Fires Event.Draw `n` times with the given frame time (default 1/60 s).
     function kit.draw(n, dt)
-        for _ = 1, (n or 1) do fire("Draw", { timeDeltaSecs = dt or (1 / 60) }) end
+        for _ = 1, (n or 1) do
+            fire("Draw", { timeDeltaSecs = dt or (1 / 60) })
+            for _, hook in ipairs(kit._frameHooks) do hook() end
+        end
     end
 
     function kit.events.setLogicTick(t) logicTick = t end

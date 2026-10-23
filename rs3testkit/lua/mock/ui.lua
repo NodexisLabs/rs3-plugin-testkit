@@ -124,6 +124,11 @@ local function subscribe(self, hook, a, b)
     local id, fn = "", a
     if b ~= nil then id, fn = a, b end
     Behaviour.label(fn, function() return (HookName[hook] or tostring(hook)) .. " on " .. describe(self) end)
+    if hook == 7 or hook == 8 then
+        Core.warn("drag-hook-dead", "subscribed to " .. HookName[hook] .. ", which never fires in the live client " ..
+            "(measured 2026-10-22 on Canvas and GroupBox components, nested or not, with any dragConfig); " ..
+            "dragging has to poll the press and Mouse position instead")
+    end
     local hooks = info[self].hooks
     hooks[hook] = hooks[hook] or {}
     for _, e in ipairs(hooks[hook]) do
@@ -168,10 +173,18 @@ local componentImpls = {
     MoveToFront = function(self)
         detach(self)
         table.insert(info[info[self].parent].children, self)
+        info[self].reorders = (info[self].reorders or 0) + 1
+        local log = Docs.recordedCalls[self] or {}
+        Docs.recordedCalls[self] = log
+        log[#log + 1] = { name = "MoveToFront", args = table.pack() }
     end,
     MoveToBack = function(self)
         detach(self)
         table.insert(info[info[self].parent].children, 1, self)
+        info[self].reorders = (info[self].reorders or 0) + 1
+        local log = Docs.recordedCalls[self] or {}
+        Docs.recordedCalls[self] = log
+        log[#log + 1] = { name = "MoveToBack", args = table.pack() }
     end,
 }
 
@@ -591,20 +604,15 @@ function M.install(api, kit)
         if not isShown(c) then info[c].held = true end   -- see kit.ui.press
     end
 
-    -- Drags a component from (x1, y1) to (x2, y2): ONDRAG then ONDRAGCOMPLETE.
-    -- ONDRAG fires once at the start (as seen live), then ONDRAGCOMPLETE.
-    -- A move shorter than dragConfig.deadZone (larger of the x and y
-    -- distances) is not a drag, so neither fires.
-    function kit.ui.drag(c, x1, y1, x2, y2)
-        usable(c, "drag")
-        local cfg = Core.getRaw(c, "dragConfig")
-        local dead = cfg and Core.getRaw(cfg, "deadZone") or 0
-        if math.max(math.abs(x2 - x1), math.abs(y2 - y1)) < dead then return false end
-        if cfg then Core.setRaw(cfg, "draggedComponent", c) end
-        fireHook(c, 7, x1, y1)
-        fireHook(c, 8, nil, x2, y2)
-        if cfg then Core.setRaw(cfg, "draggedComponent", nil) end
-        return true
+    -- Refuses: the live client never fires ONDRAG or ONDRAGCOMPLETE
+    -- (measured 2026-10-22), so a drag test that fired them would pass on
+    -- code no player ever runs. Drive a drag the way the client does, with
+    -- kit.pointer.press / move / release and kit.tick() in between. A spec
+    -- that really wants the hook can still call kit.ui.fire(c, "ONDRAG", ...).
+    function kit.ui.drag()
+        error("kit.ui.drag: the live client never fires ONDRAG or ONDRAGCOMPLETE (measured 2026-10-22 on Canvas " ..
+            "and GroupBox components, any dragConfig), so dragging code built on them never runs for players. " ..
+            "Simulate a drag with kit.pointer.press(x, y), kit.pointer.move(x, y), kit.tick(), kit.pointer.release()", 2)
     end
 
     -- Holds the mouse button down on a component (on = true) or lets go.
@@ -624,6 +632,17 @@ function M.install(api, kit)
         elseif was and not on then fireHook(c, 2, x, y) end
     end
 
+    -- Ends a held press with no release, as the live client does when
+    -- another component takes the cursor or the pressed one is reordered:
+    -- isClicked goes false and no ONRELEASE fires.
+    function kit.ui.drop(c)
+        info[c].held = nil
+        info[c].hovered = nil
+    end
+
+    -- How many times a component was moved with MoveToFront / MoveToBack.
+    function kit.ui.reorders(c) return info[c].reorders or 0 end
+
     -- Puts the pointer over a component (on = true) or takes it away.
     -- comp.isMouseOver follows it; ONMOUSEOVER / ONMOUSELEAVE fire if the
     -- component listens for them.
@@ -636,6 +655,137 @@ function M.install(api, kit)
         if on and not was then fireHook(c, 4, x, y)
         elseif was and not on then fireHook(c, 6, x, y) end
     end
+
+    ---------------------------------------------------------------------
+    -- kit.pointer: the client's press rules, as measured live (2026-10-21/22;
+    -- model contributed from Proteus's specs). Coordinates are plugin-layer
+    -- pixels; the cursor is kit.mouse.
+    --   * A press goes to the topmost shown, non-clickthrough component under
+    --     the cursor, and only inside all its ancestors' bounds. ONCLICK
+    --     fires when the button goes down.
+    --   * A held press ends with no release when another component becomes
+    --     topmost under the cursor, or when the pressed component or an
+    --     ancestor is reordered (MoveToFront / MoveToBack).
+    --   * A component hidden while pressed never gets its release: isClicked
+    --     stays true for good.
+    --   * Releasing fires ONRELEASE on a press that is still held.
+    -- The rules are checked after every move and after every Logic / Draw
+    -- frame (kit.tick, kit.draw).
+    ---------------------------------------------------------------------
+    local P = { x = 0, y = 0 }
+    kit.pointer = {}
+
+    local function globalRect(c)
+        local x, y = 0, 0
+        local k = c
+        while k and k ~= root do
+            x = x + (Core.getRaw(k, "x") or 0)
+            y = y + (Core.getRaw(k, "y") or 0)
+            k = info[k].parent
+        end
+        return x, y, Core.getRaw(c, "width") or 0, Core.getRaw(c, "height") or 0
+    end
+
+    -- The topmost component taking the cursor at (x, y), or nil.
+    function kit.pointer.topmost(x, y)
+        local best
+        local function visit(c, ox, oy, clip)
+            if Core.destroyed[c] or Core.getRaw(c, "hidden") then return end
+            local cx, cy = ox + (Core.getRaw(c, "x") or 0), oy + (Core.getRaw(c, "y") or 0)
+            local w, h = Core.getRaw(c, "width") or 0, Core.getRaw(c, "height") or 0
+            local cl = { math.max(clip[1], cx), math.max(clip[2], cy), math.min(clip[3], cx + w), math.min(clip[4], cy + h) }
+            if cl[1] >= cl[3] or cl[2] >= cl[4] then return end
+            if Core.getRaw(c, "clickthrough") == false and Core.getRaw(c, "enabled") ~= false
+                and x >= cl[1] and x < cl[3] and y >= cl[2] and y < cl[4] then
+                best = c
+            end
+            for _, k in ipairs(info[c].children) do visit(k, cx, cy, cl) end
+        end
+        local w, h = Core.getRaw(root, "width"), Core.getRaw(root, "height")
+        for _, k in ipairs(info[root].children) do visit(k, 0, 0, { 0, 0, w, h }) end
+        return best
+    end
+
+    local function ancestry(c)
+        local out = {}
+        while c and c ~= root do out[#out + 1] = c; c = info[c].parent end
+        return out
+    end
+
+    local function dropPress(reason)
+        kit.ui.drop(P.pressed)
+        P.dropped = reason
+    end
+
+    -- Applies the rules to the press held now.
+    function kit.pointer.check()
+        local c = P.pressed
+        if c == nil or P.dropped or P.sticky then return end
+        if not isShown(c) then
+            P.sticky = true                         -- the release will never arrive
+            return
+        end
+        for a, n in pairs(P.reorders) do
+            if (info[a].reorders or 0) ~= n then
+                return dropPress("the pressed component or an ancestor was reordered")
+            end
+        end
+        local top = kit.pointer.topmost(P.x, P.y)
+        if top ~= c then
+            dropPress(top and ("another " .. Core.classOf(top) .. " took the cursor") or "the cursor left it")
+        end
+    end
+    table.insert(kit._frameHooks, kit.pointer.check)
+
+    function kit.pointer.move(x, y)
+        P.x, P.y = x, y
+        kit.mouse.set(x, y)
+        kit.pointer.check()
+    end
+
+    -- Presses at (x, y). Returns the component pressed, or nil.
+    function kit.pointer.press(x, y)
+        if P.pressed and not P.dropped and not P.sticky then
+            error("kit.pointer.press: the button is already down; call kit.pointer.release() first", 2)
+        end
+        kit.pointer.move(x, y)
+        local c = kit.pointer.topmost(x, y)
+        P.pressed, P.dropped, P.sticky, P.reorders = c, nil, nil, {}
+        if c == nil then return nil end
+        for _, a in ipairs(ancestry(c)) do P.reorders[a] = info[a].reorders or 0 end
+        kit.ui.hover(c)
+        kit.ui.hold(c)
+        return c
+    end
+
+    -- Releases the button. Returns { released = ONRELEASE reached the
+    -- pressed component, dropped = why it ended early or nil, sticky = it
+    -- was hidden while held, target = the component pressed }.
+    function kit.pointer.release()
+        local c = P.pressed
+        if c == nil then return { released = false } end
+        kit.pointer.check()
+        local out = { released = false, dropped = P.dropped, sticky = P.sticky == true, target = c }
+        if not P.dropped and not P.sticky then
+            out.released = true
+            kit.ui.hold(c, false)
+            kit.ui.hover(c, false)
+        end
+        P.pressed = nil
+        return out
+    end
+
+    -- A full press-and-release at (x, y), like a player's click.
+    function kit.pointer.click(x, y)
+        local c = kit.pointer.press(x, y)
+        local r = kit.pointer.release()
+        r.target = c
+        return r
+    end
+
+    function kit.pointer.target() return P.pressed end
+    function kit.pointer.holding() return P.pressed ~= nil and not P.dropped and not P.sticky end
+    function kit.pointer.rect(c) return globalRect(c) end
 
     -- Fires any hook by name with the documented arguments after self.
     function kit.ui.fire(c, hookName, ...)

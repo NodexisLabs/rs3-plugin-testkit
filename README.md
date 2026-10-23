@@ -75,6 +75,35 @@ can only change how something is drawn, which a stand-in can't see. The kit
 records those calls (`kit.ui.calls(component)`) instead of raising. Methods
 that return a value never get a made-up answer.
 
+### Mouse presses (`kit.pointer`)
+
+`kit.pointer` plays a mouse against the components on the plugin layer, by
+the rules measured in the beta client (October 2026):
+
+- A press goes to the topmost shown component under the cursor that is not
+  `clickthrough`, and a component only takes the cursor inside all of its
+  ancestors' bounds. `ONCLICK` fires when the button goes down.
+- A held press ends with **no release** when another component becomes
+  topmost under the cursor, or when the pressed component or an ancestor is
+  reordered (`MoveToFront` / `MoveToBack`), for example by another plugin
+  bringing its window forward.
+- A component hidden while pressed never gets its release: `isClicked`
+  stays true for good.
+- `ONDRAG` and `ONDRAGCOMPLETE` never fire, on any component or
+  `dragConfig`. So `kit.ui.drag` refuses to fake them, and subscribing to
+  them raises a lint. Dragging has to poll the press and `Mouse.GetX/GetY`.
+
+The rules are applied after every move and every `kit.tick` / `kit.draw`
+frame:
+
+```lua
+local target = kit.pointer.press(150, 105)   -- a window's title bar
+kit.pointer.move(260, 140); kit.tick()       -- the plugin polls isClicked + Mouse
+local r = kit.pointer.release()              -- { released, dropped = reason, sticky }
+```
+
+The model came from Proteus's live tests.
+
 ### Behaviour from a live client
 
 These were found by running plugins in the beta client (October 2026). The
@@ -85,6 +114,10 @@ kit reproduces them so you find them offline:
   `unexpected json Array, expected a json Object`.
 - `clickthrough` defaults to true, so clicks on your window also walk the
   player until you set it to false. The kit reports this as a lint.
+- No component ever receives `ONDRAG` / `ONDRAGCOMPLETE`, and a component
+  hidden by its own press reads `isClicked == true` forever (see Mouse
+  presses above).
+- `ui.ComponentType` skips 19: `LAYER` is 20 up to `GROUP_BOX` 24.
 - `ui.Sprite:SetAssociatedObject(id, quantity)` fails even though the docs
   list a quantity. Set `associatedObjectQuantity` instead.
 - `ui.Model` starts with `viewDistance` 100 and `modelWidth`/`modelHeight` 0,
@@ -206,8 +239,10 @@ host Lua library.
 | `handle:select("Label")` | runs a plugin entry's function, fires `EntrySelected` and `Closed` |
 | `kit.ui.texts()` | visible `ui.Text` contents, in creation order (hidden parents count) |
 | `kit.ui.button(label[, prefix])`, `kit.ui.press(label)` | press a visible, enabled button |
-| `kit.ui.click(component or "text")`, `kit.ui.drag(c, x1, y1, x2, y2)` | `ONCLICK`, `ONDRAG` / `ONDRAGCOMPLETE` |
-| `kit.ui.hold(c[, false])`, `kit.ui.hover(c[, false])`, `kit.mouse.set(x, y)` | `isClicked` / `isMouseOver` for code that polls them, firing `ONCLICK`/`ONRELEASE` and `ONMOUSEOVER`/`ONMOUSELEAVE` |
+| `kit.ui.click(component or "text")` | `ONCLICK` on that component |
+| `kit.pointer.press(x, y)`, `.move(x, y)`, `.release()`, `.click(x, y)` | a real mouse: hit-tests the layer and applies the client's press rules (below) |
+| `kit.ui.hold(c[, false])`, `kit.ui.hover(c[, false])`, `kit.ui.drop(c)`, `kit.mouse.set(x, y)` | set `isClicked` / `isMouseOver` on one component directly (`drop` ends a press with no release) |
+| `kit.ui.reorders(c)`, `kit.ui.calls(c)` | how often `MoveToFront`/`MoveToBack` moved it; the void visual calls it received |
 | `kit.ui.find(fn)`, `kit.ui.all()`, `kit.ui.count()`, `kit.ui.dump()` | look around the tree |
 | `kit.ui.canvas(c)` | elements drawn on a `ui.Canvas` |
 

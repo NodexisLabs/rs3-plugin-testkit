@@ -527,24 +527,121 @@ class LiveClientFindings(KitCase):
         self.assertPasses(r)
         self.assertIn("sticky-isClicked", " ".join(r[0]["warnings"]))
 
-    def test_drag_config_and_dead_zone(self):
+    def test_drag_hooks_never_fire_live(self):
         r = self.run_spec("""
             local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
             bar = ui.GroupBox.new(top)
             bar.clickthrough = false
             bar.dragConfig.deadZone = 5
             bar.dragConfig.renderBehaviour = ui.DragRenderBehaviour.INVISIBLE
-            drags = 0
-            bar:Subscribe(ui.Hook.ONDRAG, function() drags = drags + 1 end)
+            bar:Subscribe(ui.Hook.ONDRAG, function() end)
+        """, """
+            kit.start()
+            test("config fields", function() expect(kit.env().bar.dragConfig.deadZone).toBe(5) end)
+            test("drag refused", function() kit.ui.drag(kit.env().bar, 0, 0, 40, 0) end)
+        """)
+        self.assertTrue(r[0]["ok"], r[0]["error"])
+        self.assertIn("drag-hook-dead", " ".join(r[0]["warnings"]))
+        self.assertIn("never fires ONDRAG", r[1]["error"])
+
+
+POINTER_UI = """
+    local top = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+    win = ui.GroupBox.new(top)          -- a window at (100, 100), 200 x 150
+    win.clickthrough = false
+    win:SetPos(100, 100); win:SetSize(200, 150)
+    title = ui.Text.new(win)            -- its title bar, 200 x 20
+    title.clickthrough = false
+    title:SetPos(0, 0); title:SetSize(200, 20)
+    released = 0
+    title:Subscribe(ui.Hook.ONRELEASE, function() released = released + 1 end)
+    other = ui.GroupBox.new(top)        -- a second window, off to the right
+    other.clickthrough = false
+    other:SetPos(400, 100); other:SetSize(100, 100)
+    overhang = ui.Text.new(win)         -- sticks out past the window's right edge
+    overhang.clickthrough = false
+    overhang:SetPos(150, 50); overhang:SetSize(200, 20)
+    Event.Logic.Subscribe("drag", function()
+        if title.isClicked then lastX = Mouse.GetX() end
+    end)
+"""
+
+
+class Pointer(KitCase):
+    """kit.pointer: the client's press rules as measured live."""
+
+    def test_press_hits_the_topmost_and_release_fires(self):
+        r = self.run_spec(POINTER_UI, """
+            kit.start()
+            test("x", function()
+                local env = kit.env()
+                expect(kit.pointer.topmost(150, 105)).toBe(env.title)
+                expect(kit.pointer.topmost(150, 150)).toBe(env.win)
+                expect(kit.pointer.topmost(5, 5)).toBeNil()
+                expect(kit.pointer.press(150, 105)).toBe(env.title)
+                kit.pointer.move(160, 108); kit.tick()
+                expect(env.lastX).toBe(160)
+                local r = kit.pointer.release()
+                expect(r.released).toBe(true)
+                expect(env.released).toBe(1)
+                expect(env.title.isClicked).toBe(false)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_children_only_take_the_cursor_inside_their_ancestors(self):
+        r = self.run_spec(POINTER_UI, """
+            kit.start()
+            test("x", function()
+                -- (320, 155) is on the overhang text but outside its window
+                expect(kit.pointer.topmost(320, 155)).toBeNil()
+                expect(kit.pointer.topmost(280, 155)).toBe(kit.env().overhang)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_press_dropped_when_cursor_leaves_or_another_takes_it(self):
+        r = self.run_spec(POINTER_UI, """
+            kit.start()
+            test("x", function()
+                local env = kit.env()
+                kit.pointer.press(150, 105)
+                kit.pointer.move(450, 150)           -- over the other window
+                local r = kit.pointer.release()
+                expect(r.released).toBe(false)
+                expect(r.dropped).toContain("took the cursor")
+                expect(env.released).toBe(0)        -- no release for a dropped press
+                expect(env.title.isClicked).toBe(false)
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_press_dropped_when_window_moves_to_front(self):
+        r = self.run_spec(POINTER_UI + """
+            Event.Draw.Subscribe("front", function() if title.isClicked then win:MoveToFront() end end)
         """, """
             kit.start()
             test("x", function()
-                local bar = kit.env().bar
-                expect(kit.ui.drag(bar, 10, 10, 13, 12)).toBe(false)   -- inside the dead zone
-                expect(kit.env().drags).toBe(0)
-                expect(kit.ui.drag(bar, 10, 10, 40, 10)).toBe(true)
-                expect(kit.env().drags).toBe(1)
-                expect(bar.dragConfig.deadZone).toBe(5)
+                kit.pointer.press(150, 105)
+                kit.draw()
+                local r = kit.pointer.release()
+                expect(r.dropped).toContain("reordered")
+                expect(kit.ui.reorders(kit.env().win)).toBe(1)
+                expect(kit.ui.calls(kit.env().win)[1].name).toBe("MoveToFront")
+            end)
+        """)
+        self.assertPasses(r)
+
+    def test_hidden_while_pressed_stays_clicked(self):
+        r = self.run_spec(POINTER_UI + """
+            title:Subscribe(ui.Hook.ONCLICK, function() win.hidden = true end)
+        """, """
+            kit.start()
+            test("x", function()
+                kit.pointer.press(150, 105)
+                local r = kit.pointer.release()
+                expect(r.sticky).toBe(true)
+                expect(kit.env().title.isClicked).toBe(true)
             end)
         """)
         self.assertPasses(r)
